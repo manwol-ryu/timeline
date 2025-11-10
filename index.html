@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영상 타임라인 메모 도구</title>
+    <style>
+        :root {
+            --bg-1: #f7f8fb;
+            --bg-2: #eef2f7;
+            --panel: #ffffff;
+            --panel-muted: #f4f6fb;
+            --accent: #2563eb;
+            --accent-strong: #1d4ed8;
+            --accent-soft: rgba(37, 99, 235, 0.12);
+            --text: #0f172a;
+            --text-subtle: #64748b;
+            --border: rgba(15, 23, 42, 0.08);
+            --border-strong: #d8e0ef;
+            --success: #16a34a;
+            --danger: #ef4444;
+            --shadow: 0 25px 60px rgba(15, 23, 42, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 16px clamp(10px, 2vw, 26px);
+            font-family: 'Pretendard', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--bg-1), var(--bg-2));
+            color: var(--text);
+            height: 100vh;
+            min-height: 100vh;
+            overflow: hidden;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .app-shell {
+            max-width: 1600px;
+            margin: 0 clamp(40px, 5vw, 100px);
+            height: 100%;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            align-items: stretch;
+            gap: clamp(6px, 1.2vw, 16px);
+        }
+
+        .video-stage {
+            height: 100%;
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            height: 100%;
+            overflow: hidden;
+            border-left: 1px solid var(--border);
+            padding-left: clamp(12px, 1vw, 18px);
+        }
+
+        .workspace-panels {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: clamp(18px, 2vw, 28px);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .tab-controls {
+            display: inline-flex;
+            border: 1px solid var(--border-strong);
+            border-radius: 999px;
+            padding: 3px;
+            background: var(--panel-muted);
+            width: fit-content;
+        }
+
+        .tab-button {
+            border: none;
+            background: transparent;
+            color: var(--text-subtle);
+            padding: 8px 18px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .tab-button.is-active {
+            background: #fff;
+            color: var(--text);
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .workspace-panel {
+            display: none;
+            flex-direction: column;
+            gap: 16px;
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        .workspace-panel.is-active {
+            display: flex;
+        }
+
+        .video-panel {
+            padding: clamp(20px, 2.3vw, 30px);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .file-info {
+            border: 1px dashed var(--border-strong);
+            border-radius: 18px;
+            padding: 14px;
+            background: #fff;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .file-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .file-label {
+            margin: 0;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--text-subtle);
+        }
+
+        .file-name {
+            margin: 4px 0 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .file-size {
+            margin: 0;
+            color: var(--text-subtle);
+            font-size: 0.9rem;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .convert-status {
+            font-size: 0.9rem;
+            color: var(--accent-strong);
+            min-height: 1em;
+        }
+
+        .video-upload {
+            border: 1px dashed var(--border-strong);
+            border-radius: 18px;
+            padding: 16px;
+            text-align: center;
+            color: var(--text-subtle);
+            background: var(--panel-muted);
+            transition: border 0.2s ease, transform 0.2s ease;
+        }
+
+        .video-upload:hover,
+        .video-upload:focus-within {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+
+        .video-upload strong {
+            display: block;
+            font-size: 1rem;
+            color: var(--text);
+        }
+
+        .video-upload p {
+            margin: 6px 0 0;
+            font-size: 0.9rem;
+            color: var(--text-subtle);
+        }
+
+        .video-upload input[type="file"] {
+            width: 100%;
+            margin-top: 10px;
+            color: var(--text-subtle);
+        }
+
+        .video-frame {
+            width: 100%;
+            border-radius: 20px;
+            border: 1px solid var(--border-strong);
+            background: #0b1220;
+            --video-aspect: 16 / 9;
+            aspect-ratio: var(--video-aspect, 16 / 9);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .video-frame video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .video-info {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 16px;
+            align-items: center;
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+            border-radius: 18px;
+            padding: 12px 18px;
+        }
+
+        .video-time {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .video-time-label {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--text-subtle);
+        }
+
+        .time-badge {
+            padding: 6px 14px;
+            border-radius: 999px;
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+            color: var(--accent-strong);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .quick-buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        button {
+            border: 1px solid transparent;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.93rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, transform 0.1s ease;
+        }
+
+        button.primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 15px 35px rgba(37, 99, 235, 0.25);
+        }
+
+        button.primary:hover {
+            background: var(--accent-strong);
+        }
+
+        button.ghost {
+            background: var(--panel-muted);
+            color: var(--text);
+            border-color: var(--border-strong);
+        }
+
+        button.ghost:hover {
+            background: #fff;
+        }
+
+        button.success {
+            background: rgba(22, 163, 74, 0.12);
+            color: #15803d;
+            border-color: rgba(22, 163, 74, 0.3);
+        }
+
+        button.danger {
+            background: rgba(239, 68, 68, 0.12);
+            color: #b91c1c;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        button.success:hover {
+            background: rgba(22, 163, 74, 0.2);
+        }
+
+        button.danger:hover {
+            background: rgba(239, 68, 68, 0.2);
+        }
+
+        button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        label {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 4px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        input[type="text"],
+        textarea,
+        input[type="color"] {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 14px;
+            border: 1px solid var(--border-strong);
+            background: var(--panel-muted);
+            color: var(--text);
+            font-size: 0.95rem;
+            transition: border 0.2s ease, background 0.2s ease;
+            font-family: inherit;
+        }
+
+        input::placeholder,
+        textarea::placeholder {
+            color: var(--text-subtle);
+        }
+
+        input[type="color"] {
+            padding: 0;
+            height: 44px;
+            background: #fff;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: #fff;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 110px;
+            line-height: 1.6;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+        }
+
+        .timeline-bar {
+            background: var(--panel-muted);
+            border-radius: 999px;
+            border: 1px solid var(--border-strong);
+            height: 14px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .inline-timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .timeline-label {
+            margin: 0;
+            font-weight: 600;
+            color: var(--text);
+            font-size: 0.92rem;
+        }
+
+        .timeline-marker {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            border-radius: 999px;
+            box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+        }
+
+        .timeline-empty {
+            font-size: 0.9rem;
+            color: var(--text-subtle);
+            text-align: center;
+            padding: 18px 0;
+        }
+
+        .search-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 10px;
+            border-radius: 14px;
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+        }
+
+        .search-row input {
+            flex: 1;
+            background: #fff;
+        }
+
+        .segments-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .segment-card {
+            background: #fff;
+            border: 1px solid var(--border-strong);
+            border-radius: 16px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+        }
+
+        .segment-header {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+
+        .segment-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .color-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 1px var(--border-strong);
+        }
+
+        .segment-time {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 0.95rem;
+        }
+
+        .segment-note {
+            color: var(--text-subtle);
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+
+        .segment-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px 20px;
+            color: var(--text-subtle);
+            border: 2px dashed var(--border-strong);
+            border-radius: 16px;
+            background: var(--panel-muted);
+        }
+
+        .form-status {
+            color: var(--accent-strong);
+            font-weight: 600;
+            display: none;
+            margin-left: 8px;
+        }
+
+        @media (max-width: 980px) {
+            body {
+                padding: 24px clamp(14px, 5vw, 32px);
+                height: auto;
+                min-height: 100vh;
+                overflow: auto;
+            }
+
+            .app-shell {
+                height: auto;
+                grid-template-columns: 1fr;
+                grid-auto-rows: auto;
+            }
+
+            video {
+                min-height: 260px;
+            }
+
+            .workspace {
+                overflow: visible;
+                border-left: none;
+                padding-left: 0;
+            }
+
+            .workspace-panel {
+                max-height: none;
+            }
+
+            .tab-controls {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .tab-button {
+                flex: 1;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="app-shell">
+        <section class="video-stage">
+            <div class="panel video-panel" id="playerPanel">
+                <div id="uploadCard" class="video-upload">
+                    <strong>로컬 영상 불러오기</strong>
+                    <p>mp4, mov 등 브라우저에서 지원하는 파일이면 바로 재생됩니다.</p>
+                    <input type="file" id="videoInput" accept="video/*">
+                </div>
+
+                <div id="fileInfoCard" class="file-info">
+                    <div class="file-meta">
+                        <div>
+                            <p class="file-label">선택한 파일</p>
+                            <p id="fileName" class="file-name">아직 파일이 선택되지 않았어요</p>
+                            <p id="fileDetails" class="file-size">-- MB</p>
+                        </div>
+                        <div class="file-actions">
+                            <button class="ghost" id="changeVideo">파일 변경</button>
+                            <button class="ghost" id="convertVideo">파일 변환</button>
+                        </div>
+                    </div>
+                    <span id="convertStatus" class="convert-status" aria-live="polite"></span>
+                </div>
+
+                <div id="videoFrame" class="video-frame">
+                    <video id="videoPlayer" controls preload="metadata"></video>
+                </div>
+
+                <div class="inline-timeline">
+                    <p class="timeline-label">타임라인</p>
+                    <div id="timelineBarCompact" class="timeline-bar"></div>
+                    <div id="timelineEmptyCompact" class="timeline-empty" style="display:none;">영상 길이를 알 수 없으면 타임라인 막대가 표시되지 않습니다.</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="workspace panel">
+            <div class="tab-controls" role="tablist">
+                <button class="tab-button is-active" id="tabEditor" data-tab="editor" role="tab" aria-controls="editorPanel" aria-selected="true">메모 입력</button>
+                <button class="tab-button" id="tabTimeline" data-tab="timeline" role="tab" aria-controls="timelinePanel" aria-selected="false">타임라인 확인</button>
+            </div>
+
+            <div class="workspace-panels">
+                <section class="workspace-panel is-active" id="editorPanel" data-panel="editor" role="tabpanel" aria-labelledby="tabEditor">
+                    <div>
+                        <label for="segmentTitle">구간 제목</label>
+                        <input type="text" id="segmentTitle" placeholder="예) 인트로 요약, 인터뷰 핵심 등">
+                    </div>
+
+                    <div class="video-info">
+                        <div class="video-time">
+                            <span class="video-time-label">현재 / 전체</span>
+                            <span id="timeBadge" class="time-badge">00:00 / --:--</span>
+                        </div>
+                        <div class="quick-buttons" aria-label="빠른 위치 지정">
+                            <button class="ghost" data-set-from-video="start">현재 위치를 시작에</button>
+                            <button class="ghost" data-set-from-video="end">현재 위치를 종료에</button>
+                            <button class="ghost" id="jumpBack">-5초</button>
+                            <button class="ghost" id="jumpForward">+5초</button>
+                        </div>
+                    </div>
+
+                    <div class="form-grid">
+                        <div>
+                            <label for="startTime">시작 (mm:ss 혹은 초)</label>
+                            <input type="text" id="startTime" placeholder="00:00">
+                        </div>
+                        <div>
+                            <label for="endTime">종료 (mm:ss 혹은 초)</label>
+                            <input type="text" id="endTime" placeholder="00:00">
+                        </div>
+                        <div>
+                            <label for="segmentTag">태그 (선택)</label>
+                            <input type="text" id="segmentTag" placeholder="예) B-roll, 강조 포인트">
+                        </div>
+                        <div>
+                            <label for="segmentColor">표시 색상</label>
+                            <input type="color" id="segmentColor" value="#3b82f6">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="segmentNote">메모</label>
+                        <textarea id="segmentNote" placeholder="이 구간에서 체크할 특징, 편집 아이디어 등을 적어보세요."></textarea>
+                    </div>
+
+                    <div class="quick-buttons">
+                        <button class="primary" id="saveSegment">메모 추가</button>
+                        <button class="ghost" id="cancelEdit" style="display:none;">취소</button>
+                        <span id="formStatus" class="form-status" aria-live="polite"></span>
+                    </div>
+                </section>
+
+                <section class="workspace-panel" id="timelinePanel" data-panel="timeline" role="tabpanel" aria-labelledby="tabTimeline">
+                    <div>
+                        <label>타임라인</label>
+                        <div id="timelineBar" class="timeline-bar"></div>
+                        <div id="timelineEmpty" class="timeline-empty" style="display:none;">영상 길이를 알 수 없으면 타임라인 막대가 표시되지 않습니다.</div>
+                    </div>
+
+                    <div class="search-row">
+                        <input type="text" id="searchInput" placeholder="메모, 제목, 태그 검색">
+                        <button class="ghost" id="copyNotes">메모 복사</button>
+                        <button class="ghost" id="exportTxt">TXT 저장</button>
+                        <button class="ghost" id="exportJson">JSON 저장</button>
+                        <button class="ghost" id="importJson">JSON 불러오기</button>
+                        <button class="ghost" id="clearAll">전체 삭제</button>
+                        <input type="file" id="importJsonInput" accept="application/json" style="display:none;">
+                    </div>
+
+                    <div id="segmentsList" class="segments-list"></div>
+                    <div id="segmentsEmpty" class="empty-state" style="display:none;">
+                        아직 등록된 메모가 없습니다. 영상을 재생하면서 중요한 순간을 기록해보세요.
+                    </div>
+                </section>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const videoInput = document.getElementById('videoInput');
+        const video = document.getElementById('videoPlayer');
+        const videoFrame = document.getElementById('videoFrame');
+        const timeBadge = document.getElementById('timeBadge');
+        const timelineBar = document.getElementById('timelineBar');
+        const timelineEmpty = document.getElementById('timelineEmpty');
+        const timelineBarCompact = document.getElementById('timelineBarCompact');
+        const timelineEmptyCompact = document.getElementById('timelineEmptyCompact');
+        const segmentsList = document.getElementById('segmentsList');
+        const segmentsEmpty = document.getElementById('segmentsEmpty');
+
+        const uploadCard = document.getElementById('uploadCard');
+        const fileInfoCard = document.getElementById('fileInfoCard');
+        const fileNameText = document.getElementById('fileName');
+        const fileDetailsText = document.getElementById('fileDetails');
+        const changeVideoButton = document.getElementById('changeVideo');
+        const convertVideoButton = document.getElementById('convertVideo');
+        const convertStatus = document.getElementById('convertStatus');
+        const segmentTitle = document.getElementById('segmentTitle');
+        const startTimeInput = document.getElementById('startTime');
+        const endTimeInput = document.getElementById('endTime');
+        const segmentTag = document.getElementById('segmentTag');
+        const segmentColor = document.getElementById('segmentColor');
+        const segmentNote = document.getElementById('segmentNote');
+        const saveButton = document.getElementById('saveSegment');
+        const cancelEditButton = document.getElementById('cancelEdit');
+        const formStatus = document.getElementById('formStatus');
+
+        const searchInput = document.getElementById('searchInput');
+        const copyNotesButton = document.getElementById('copyNotes');
+        const exportTxtButton = document.getElementById('exportTxt');
+        const exportJsonButton = document.getElementById('exportJson');
+        const importJsonButton = document.getElementById('importJson');
+        const importJsonInput = document.getElementById('importJsonInput');
+        const clearAllButton = document.getElementById('clearAll');
+        const jumpBackButton = document.getElementById('jumpBack');
+        const jumpForwardButton = document.getElementById('jumpForward');
+        const tabButtons = document.querySelectorAll('.tab-button');
+        const workspacePanels = document.querySelectorAll('.workspace-panel');
+
+        let segments = [];
+        let editingId = null;
+        let totalDuration = 0;
+        let selectedFileSize = 0;
+        let selectedFileName = '';
+        let currentVideoUrl = '';
+        const DEFAULT_VIDEO_ASPECT = '16 / 9';
+        const DEFAULT_SEGMENT_COLOR = '#3b82f6';
+
+        function formatTime(seconds) {
+            if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
+            const totalSeconds = Math.floor(seconds);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const secs = totalSeconds % 60;
+            if (hours > 0) {
+                return [hours, minutes, secs].map(unit => String(unit).padStart(2, '0')).join(':');
+            }
+            return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function parseTimeInput(value) {
+            const raw = (value || '').trim();
+            if (!raw) return NaN;
+            if (raw.includes(':')) {
+                const parts = raw.split(':').map(part => part.trim());
+                if (parts.some(part => part === '')) return NaN;
+                const numbers = parts.map(Number);
+                if (numbers.some(num => !Number.isFinite(num) || num < 0)) return NaN;
+                return numbers.reduce((acc, num) => acc * 60 + num, 0);
+            }
+            const numeric = Number(raw);
+            return Number.isFinite(numeric) && numeric >= 0 ? numeric : NaN;
+        }
+
+        function setVideoAspect(value = DEFAULT_VIDEO_ASPECT) {
+            if (videoFrame) {
+                videoFrame.style.setProperty('--video-aspect', value);
+            }
+        }
+
+        function updateVideoAspectFromMetadata() {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+                setVideoAspect(`${video.videoWidth} / ${video.videoHeight}`);
+            } else {
+                setVideoAspect();
+            }
+        }
+
+        function getBaseFileName() {
+            if (selectedFileName) {
+                const withoutExt = selectedFileName.replace(/\.[^/.]+$/, '');
+                return withoutExt || 'timeline';
+            }
+            return 'timeline';
+        }
+
+        function refreshFileDetails() {
+            if (!fileInfoCard || fileInfoCard.style.display === 'none') return;
+            const sizeText = selectedFileSize ? `${(selectedFileSize / (1024 * 1024)).toFixed(1)} MB` : '-- MB';
+            const durationText = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
+            fileDetailsText.textContent = `${sizeText} · 길이 ${durationText}`;
+        }
+
+        function updateFileInfo(file) {
+            if (!file) {
+                selectedFileSize = 0;
+                selectedFileName = '';
+                fileNameText.textContent = '아직 파일이 선택되지 않았어요';
+                fileDetailsText.textContent = '-- MB';
+                uploadCard.style.display = 'block';
+                fileInfoCard.style.display = 'none';
+                convertStatus.textContent = '';
+                convertVideoButton.disabled = false;
+                convertVideoButton.textContent = '파일 변환';
+                setVideoAspect();
+                return;
+            }
+            selectedFileSize = file.size;
+            selectedFileName = file.name;
+            fileNameText.textContent = file.name;
+            uploadCard.style.display = 'none';
+            fileInfoCard.style.display = 'flex';
+            convertStatus.textContent = '';
+            convertVideoButton.disabled = false;
+            convertVideoButton.textContent = '파일 변환';
+            refreshFileDetails();
+        }
+
+        function simulateConversion() {
+            if (!selectedFileSize) {
+                convertStatus.textContent = '먼저 영상을 선택해주세요.';
+                return;
+            }
+            convertVideoButton.disabled = true;
+            convertVideoButton.textContent = '변환 중...';
+            convertStatus.textContent = '최적화된 MP4로 변환 중입니다...';
+            setTimeout(() => {
+                convertVideoButton.disabled = false;
+                convertVideoButton.textContent = '파일 변환';
+                convertStatus.textContent = '변환 완료! 최적화된 파일이 준비되었어요.';
+            }, 1600);
+        }
+
+        function setActiveTab(target) {
+            tabButtons.forEach(button => {
+                const isActive = button.dataset.tab === target;
+                button.classList.toggle('is-active', isActive);
+                button.setAttribute('aria-selected', String(isActive));
+            });
+            workspacePanels.forEach(panel => {
+                const isActive = panel.dataset.panel === target;
+                panel.classList.toggle('is-active', isActive);
+                panel.setAttribute('aria-hidden', String(!isActive));
+            });
+        }
+
+        function setTimeBadge() {
+            const current = formatTime(video.currentTime || 0);
+            const total = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
+            timeBadge.textContent = `${current} / ${total}`;
+        }
+
+        function renderTimelineBar(targetBar, emptyState) {
+            if (!targetBar || !emptyState) return;
+            targetBar.innerHTML = '';
+            if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+                emptyState.style.display = 'block';
+                return;
+            }
+            emptyState.style.display = 'none';
+            segments.forEach(segment => {
+                if (!Number.isFinite(segment.start) || !Number.isFinite(segment.end)) return;
+                const startPercent = Math.max(0, Math.min(100, (segment.start / totalDuration) * 100));
+                const endPercent = Math.max(0, Math.min(100, (segment.end / totalDuration) * 100));
+                const width = Math.max(1, endPercent - startPercent);
+                const marker = document.createElement('div');
+                marker.className = 'timeline-marker';
+                marker.style.left = `${startPercent}%`;
+                marker.style.width = `${width}%`;
+                marker.style.background = segment.color;
+                marker.title = `${segment.title || '제목 없음'} (${formatTime(segment.start)}~${formatTime(segment.end)})`;
+                marker.addEventListener('click', () => {
+                    video.currentTime = segment.start;
+                    video.play();
+                });
+                targetBar.appendChild(marker);
+            });
+        }
+
+        function renderTimeline() {
+            renderTimelineBar(timelineBar, timelineEmpty);
+            renderTimelineBar(timelineBarCompact, timelineEmptyCompact);
+        }
+
+        function renderSegments(filterText = '') {
+            segmentsList.innerHTML = '';
+            const keyword = filterText.trim().toLowerCase();
+            const filtered = !keyword
+                ? segments
+                : segments.filter(({ title, note, tag }) => {
+                    const joined = [title, note, tag].join(' ').toLowerCase();
+                    return joined.includes(keyword);
+                });
+
+            if (filtered.length === 0) {
+                segmentsEmpty.style.display = 'block';
+                segmentsEmpty.textContent = keyword
+                    ? '검색 결과가 없습니다. 다른 키워드로 찾아보세요.'
+                    : '아직 등록된 메모가 없습니다. 영상을 재생하면서 중요한 순간을 기록해보세요.';
+                return;
+            }
+            segmentsEmpty.style.display = 'none';
+
+            filtered.forEach(segment => {
+                const card = document.createElement('article');
+                card.className = 'segment-card';
+
+                const header = document.createElement('div');
+                header.className = 'segment-header';
+
+                const titleWrap = document.createElement('div');
+                titleWrap.className = 'segment-title';
+                const dot = document.createElement('span');
+                dot.className = 'color-dot';
+                dot.style.background = segment.color;
+                const titleText = document.createElement('strong');
+                titleText.textContent = segment.title || '제목 없음';
+                titleWrap.append(dot, titleText);
+
+                const timeText = document.createElement('span');
+                timeText.className = 'segment-time';
+                timeText.textContent = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`;
+
+                header.append(titleWrap, timeText);
+
+                const note = document.createElement('p');
+                note.className = 'segment-note';
+                note.textContent = segment.note || '작성된 메모가 없습니다.';
+
+                card.append(header, note);
+
+                if (segment.tag) {
+                    const tag = document.createElement('span');
+                    tag.className = 'tag';
+                    tag.textContent = `#${segment.tag}`;
+                    card.appendChild(tag);
+                }
+
+                const actions = document.createElement('div');
+                actions.className = 'segment-actions';
+
+                const jumpButton = document.createElement('button');
+                jumpButton.className = 'success';
+                jumpButton.textContent = '재생';
+                jumpButton.addEventListener('click', () => {
+                    if (Number.isFinite(segment.start)) {
+                        video.currentTime = segment.start;
+                        video.play();
+                    }
+                });
+
+                const editButton = document.createElement('button');
+                editButton.className = 'ghost';
+                editButton.textContent = '수정';
+                editButton.addEventListener('click', () => startEditing(segment.id));
+
+                const deleteButton = document.createElement('button');
+                deleteButton.className = 'danger';
+                deleteButton.textContent = '삭제';
+                deleteButton.addEventListener('click', () => {
+                    if (!confirm('이 구간 메모를 삭제할까요?')) return;
+                    segments = segments.filter(item => item.id !== segment.id);
+                    finishEditing();
+                    renderAll();
+                });
+
+                actions.append(jumpButton, editButton, deleteButton);
+                card.appendChild(actions);
+
+                segmentsList.appendChild(card);
+            });
+        }
+
+        function renderAll() {
+            segments.sort((a, b) => a.start - b.start);
+            renderTimeline();
+            renderSegments(searchInput.value);
+        }
+
+        function startEditing(id) {
+            const segment = segments.find(item => item.id === id);
+            if (!segment) return;
+            editingId = id;
+            segmentTitle.value = segment.title;
+            startTimeInput.value = formatTime(segment.start);
+            endTimeInput.value = formatTime(segment.end);
+            segmentTag.value = segment.tag || '';
+            segmentColor.value = segment.color;
+            segmentNote.value = segment.note || '';
+            saveButton.textContent = '수정 저장';
+            cancelEditButton.style.display = 'inline-block';
+        }
+
+        function finishEditing() {
+            editingId = null;
+            saveButton.textContent = '메모 추가';
+            cancelEditButton.style.display = 'none';
+            resetForm();
+        }
+
+        function resetForm() {
+            segmentTitle.value = '';
+            segmentTag.value = '';
+            segmentNote.value = '';
+            segmentColor.value = '#3b82f6';
+            if (Number.isFinite(video.currentTime)) {
+                const formatted = formatTime(video.currentTime);
+                startTimeInput.value = formatted;
+                endTimeInput.value = formatTime(video.currentTime + 10);
+            } else {
+                startTimeInput.value = '';
+                endTimeInput.value = '';
+            }
+        }
+
+        function showFormStatus(message) {
+            formStatus.textContent = message;
+            formStatus.style.display = 'inline';
+            setTimeout(() => {
+                formStatus.style.display = 'none';
+            }, 1600);
+        }
+
+        function gatherFormData() {
+            const start = parseTimeInput(startTimeInput.value);
+            const end = parseTimeInput(endTimeInput.value);
+
+            if (!Number.isFinite(start) || !Number.isFinite(end)) {
+                alert('시작/종료 시간을 올바르게 입력해주세요. (예: 1:20 또는 80)');
+                return null;
+            }
+            if (end <= start) {
+                alert('종료 시간은 시작 시간보다 커야 합니다.');
+                return null;
+            }
+            if (totalDuration > 0 && end > totalDuration + 0.2) {
+                if (!confirm('영상 길이를 초과하는 메모입니다. 그대로 저장할까요?')) {
+                    return null;
+                }
+            }
+
+            return {
+                id: editingId ?? crypto.randomUUID(),
+                title: segmentTitle.value.trim(),
+                start,
+                end,
+                tag: segmentTag.value.trim(),
+                color: segmentColor.value,
+                note: segmentNote.value.trim(),
+            };
+        }
+
+        function saveSegment() {
+            const data = gatherFormData();
+            if (!data) return;
+            if (editingId) {
+                segments = segments.map(item => (item.id === editingId ? { ...item, ...data } : item));
+                showFormStatus('수정 완료');
+            } else {
+                segments.push(data);
+                showFormStatus('메모 추가 완료');
+            }
+            finishEditing();
+            renderAll();
+        }
+
+        function copyNotes() {
+            if (segments.length === 0) {
+                alert('복사할 메모가 없습니다.');
+                return;
+            }
+            const text = segments.map(segment => {
+                const parts = [
+                    `▶ ${segment.title || '제목 없음'}`,
+                    `시간: ${formatTime(segment.start)} ~ ${formatTime(segment.end)}`,
+                    segment.tag ? `태그: #${segment.tag}` : '',
+                    segment.note ? `메모: ${segment.note}` : '',
+                ].filter(Boolean);
+                return parts.join('\n');
+            }).join('\n\n');
+
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            try {
+                document.execCommand('copy');
+                showFormStatus('메모 복사 완료');
+            } catch (err) {
+                alert('클립보드 복사에 실패했습니다. 수동으로 선택 후 복사해주세요.');
+            }
+            document.body.removeChild(temp);
+        }
+
+        function exportTxt() {
+            if (segments.length === 0) {
+                alert('저장할 메모가 없습니다.');
+                return;
+            }
+            const lines = segments.map(segment => {
+                const timeline = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`;
+                const tag = segment.tag ? `#${segment.tag}` : '태그 없음';
+                const title = segment.title || '제목 없음';
+                const note = segment.note || '메모 없음';
+                return [timeline, tag, title, note].join(' - ');
+            }).join('\n');
+            const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${getBaseFileName()}_타임라인.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportJson() {
+            if (segments.length === 0) {
+                alert('저장할 메모가 없습니다.');
+                return;
+            }
+            const payload = {
+                exportedAt: new Date().toISOString(),
+                duration: totalDuration,
+                 videoName: selectedFileName,
+                segments,
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${getBaseFileName()}_타임라인.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importJsonFile(file) {
+            const reader = new FileReader();
+            reader.onload = event => {
+                try {
+                    const payload = JSON.parse(event.target.result);
+                    const importedSegments = Array.isArray(payload.segments) ? payload.segments : [];
+                    segments = importedSegments.map(segment => ({
+                        ...segment,
+                        id: segment.id || crypto.randomUUID(),
+                        start: Number(segment.start),
+                        end: Number(segment.end),
+                        color: segment.color || DEFAULT_SEGMENT_COLOR,
+                    })).filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
+                    if (typeof payload.duration === 'number' && Number.isFinite(payload.duration)) {
+                        totalDuration = payload.duration;
+                    }
+                    if (typeof payload.videoName === 'string' && payload.videoName.trim()) {
+                        selectedFileName = payload.videoName.trim();
+                        fileNameText.textContent = selectedFileName;
+                        fileDetailsText.textContent = totalDuration > 0
+                            ? `길이 ${formatTime(totalDuration)}`
+                            : '-- MB';
+                        uploadCard.style.display = 'none';
+                        fileInfoCard.style.display = 'flex';
+                    }
+                    finishEditing();
+                    renderAll();
+                    showFormStatus('JSON 불러오기 완료');
+                } catch (error) {
+                    console.error(error);
+                    alert('JSON 파일을 불러오는 중 오류가 발생했습니다.');
+                }
+            };
+            reader.readAsText(file, 'utf-8');
+        }
+
+        function clearAll() {
+            if (segments.length === 0) return;
+            if (!confirm('등록된 모든 메모를 삭제할까요?')) return;
+            segments = [];
+            finishEditing();
+            renderAll();
+        }
+
+        function initVideoEvents() {
+            video.addEventListener('loadedmetadata', () => {
+                totalDuration = Number.isFinite(video.duration) ? video.duration : 0;
+                setTimeBadge();
+                renderTimeline();
+                resetForm();
+                refreshFileDetails();
+                updateVideoAspectFromMetadata();
+            });
+
+            video.addEventListener('timeupdate', () => {
+                setTimeBadge();
+            });
+        }
+
+        function initControls() {
+            document.querySelectorAll('[data-set-from-video]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const target = button.dataset.setFromVideo === 'start' ? startTimeInput : endTimeInput;
+                    target.value = formatTime(video.currentTime || 0);
+                });
+            });
+
+            jumpBackButton.addEventListener('click', () => {
+                video.currentTime = Math.max(0, (video.currentTime || 0) - 5);
+            });
+
+            jumpForwardButton.addEventListener('click', () => {
+                if (!Number.isFinite(video.currentTime)) return;
+                if (Number.isFinite(totalDuration) && totalDuration > 0) {
+                    video.currentTime = Math.min(totalDuration, video.currentTime + 5);
+                } else {
+                    video.currentTime += 5;
+                }
+            });
+
+            saveButton.addEventListener('click', saveSegment);
+            cancelEditButton.addEventListener('click', () => {
+                finishEditing();
+                showFormStatus('초기화');
+            });
+
+            searchInput.addEventListener('input', () => renderSegments(searchInput.value));
+            copyNotesButton.addEventListener('click', copyNotes);
+            exportTxtButton.addEventListener('click', exportTxt);
+            exportJsonButton.addEventListener('click', exportJson);
+            importJsonButton.addEventListener('click', () => importJsonInput.click());
+            importJsonInput.addEventListener('change', event => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                importJsonFile(file);
+                importJsonInput.value = '';
+            });
+            clearAllButton.addEventListener('click', clearAll);
+            changeVideoButton.addEventListener('click', () => videoInput.click());
+            convertVideoButton.addEventListener('click', simulateConversion);
+            tabButtons.forEach(button => {
+                button.addEventListener('click', () => setActiveTab(button.dataset.tab));
+            });
+
+            videoInput.addEventListener('change', event => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                updateFileInfo(file);
+                const url = URL.createObjectURL(file);
+                if (currentVideoUrl) {
+                    URL.revokeObjectURL(currentVideoUrl);
+                }
+                currentVideoUrl = url;
+                video.src = url;
+                video.play().catch(() => {
+                    // 자동 재생이 막히더라도 문제없음
+                });
+            });
+
+            setActiveTab('editor');
+        }
+
+        setVideoAspect();
+        resetForm();
+        initVideoEvents();
+        initControls();
+        renderAll();
+    </script>
+</body>
+</html>
