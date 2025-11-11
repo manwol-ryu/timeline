@@ -148,6 +148,7 @@
 
         .workspace-panel.is-active {
             display: flex;
+            justify-content: center;
         }
 
         .video-panel {
@@ -157,6 +158,11 @@
             flex-direction: column;
             gap: 14px;
             overflow-y: auto;
+            align-items: center;
+        }
+
+        .video-panel > * {
+            width: 100%;
         }
 
         .file-info {
@@ -413,8 +419,17 @@
 
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 12px;
+        }
+
+        .form-grid .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-grid .quarter-width {
+            grid-column: span 1;
+            max-width: 75%;
         }
 
         .timeline-bar {
@@ -625,7 +640,7 @@
             justify-content: space-between;
             align-items: center;
             margin-bottom: 24px;
-            padding-bottom: 16px;
+            padding: 0 0 16px 0;
             border-bottom: 1px solid var(--border);
         }
 
@@ -637,7 +652,7 @@
 
         .close-button {
             width: 20px;
-            height: 20px;
+            height: 30px;
             border-radius: 50%;
             background: var(--danger);
             border: none;
@@ -1025,13 +1040,13 @@
                             <label for="endTime">종료 (mm:ss 혹은 초)</label>
                             <input type="text" id="endTime" placeholder="00:00">
                         </div>
-                        <div>
-                            <label for="segmentTag">태그 (선택)</label>
-                            <input type="text" id="segmentTag" placeholder="예) B-roll, 강조 포인트">
-                        </div>
-                        <div>
+                        <div class="quarter-width">
                             <label for="segmentColor">표시 색상</label>
                             <input type="color" id="segmentColor" value="#3b82f6">
+                        </div>
+                        <div class="full-width">
+                            <label for="segmentTag">태그 (선택)</label>
+                            <input type="text" id="segmentTag" placeholder="예) B-roll, 강조 포인트">
                         </div>
                     </div>
 
