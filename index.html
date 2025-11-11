@@ -525,6 +525,233 @@
             margin-left: 8px;
         }
 
+        .settings-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--panel);
+            border: 1px solid var(--border-strong);
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            z-index: 1000;
+        }
+
+        .settings-button:hover {
+            background: var(--accent);
+            border-color: var(--accent);
+            transform: rotate(90deg);
+        }
+
+        .settings-button svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--text);
+            transition: fill 0.2s ease;
+        }
+
+        .settings-button:hover svg {
+            fill: white;
+        }
+
+        .settings-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            padding: 20px;
+        }
+
+        .settings-modal.is-open {
+            display: flex;
+        }
+
+        .settings-content {
+            background: var(--panel);
+            border-radius: 20px;
+            padding: 32px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 40px 80px rgba(15, 23, 42, 0.3);
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+            color: var(--text);
+        }
+
+        .close-button {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+
+        .close-button:hover {
+            background: var(--danger);
+            border-color: var(--danger);
+            transform: rotate(90deg);
+        }
+
+        .close-button svg {
+            width: 20px;
+            height: 20px;
+            fill: var(--text);
+        }
+
+        .close-button:hover svg {
+            fill: white;
+        }
+
+        .settings-section {
+            margin-bottom: 28px;
+        }
+
+        .settings-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .settings-section h3 {
+            margin: 0 0 12px 0;
+            font-size: 1.1rem;
+            color: var(--text);
+        }
+
+        .settings-section p {
+            margin: 0 0 12px 0;
+            color: var(--text-subtle);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .settings-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .cache-info {
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+        }
+
+        .cache-info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .cache-info-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .cache-info-label {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .cache-info-value {
+            color: var(--accent);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .cached-files-list {
+            max-height: 200px;
+            overflow-y: auto;
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            padding: 12px;
+        }
+
+        .cached-file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .cached-file-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .cached-file-name {
+            font-weight: 600;
+            color: var(--text);
+            font-size: 0.9rem;
+            flex: 1;
+            margin-right: 12px;
+            word-break: break-all;
+        }
+
+        .cached-file-count {
+            color: var(--text-subtle);
+            font-size: 0.85rem;
+            margin-right: 12px;
+        }
+
+        .setting-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--panel-muted);
+            border: 1px solid var(--border-strong);
+            border-radius: 12px;
+            margin-bottom: 10px;
+        }
+
+        .setting-row input[type="color"] {
+            width: 60px;
+            height: 40px;
+        }
+
+        .setting-row label {
+            flex: 1;
+            margin: 0;
+        }
+
         @media (max-width: 980px) {
             body {
                 padding: 24px clamp(14px, 5vw, 32px);
@@ -562,10 +789,86 @@
                 flex: 1;
                 text-align: center;
             }
+
+            .settings-button {
+                top: 10px;
+                right: 10px;
+                width: 44px;
+                height: 44px;
+            }
+
+            .settings-content {
+                padding: 24px;
+                max-height: 85vh;
+            }
+
+            .cached-file-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .cached-file-name {
+                margin-right: 0;
+            }
         }
     </style>
 </head>
 <body>
+    <button class="settings-button" id="settingsButton" aria-label="설정">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+        </svg>
+    </button>
+
+    <div class="settings-modal" id="settingsModal">
+        <div class="settings-content">
+            <div class="settings-header">
+                <h2>설정</h2>
+                <button class="close-button" id="closeSettings" aria-label="닫기">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="settings-section">
+                <h3>캐시 관리</h3>
+                <p>브라우저에 저장된 타임라인 데이터를 관리합니다.</p>
+                <div class="cache-info" id="cacheInfo">
+                    <div class="cache-info-row">
+                        <span class="cache-info-label">저장된 영상 파일</span>
+                        <span class="cache-info-value" id="cachedFilesCount">0개</span>
+                    </div>
+                    <div class="cache-info-row">
+                        <span class="cache-info-label">전체 타임라인 수</span>
+                        <span class="cache-info-value" id="totalSegmentsCount">0개</span>
+                    </div>
+                </div>
+                <div id="cachedFilesList"></div>
+                <div class="settings-actions">
+                    <button class="danger" id="clearCurrentCache">현재 영상 캐시 삭제</button>
+                    <button class="danger" id="clearAllCache">전체 캐시 삭제</button>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>기본 설정</h3>
+                <p>새 타임라인 메모를 추가할 때 적용되는 기본값을 설정합니다.</p>
+                <div class="setting-row">
+                    <label for="defaultColorSetting">기본 색상</label>
+                    <input type="color" id="defaultColorSetting" value="#3b82f6">
+                    <button class="ghost" id="resetDefaultColor">초기화</button>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <h3>정보</h3>
+                <p>영상 타임라인 메모 도구 v1.0<br>브라우저의 localStorage를 사용하여 데이터를 저장합니다.</p>
+            </div>
+        </div>
+    </div>
+
     <main class="app-shell">
         <section class="video-stage">
             <div class="panel video-panel" id="playerPanel">
@@ -736,6 +1039,7 @@
         const DEFAULT_SEGMENT_COLOR = '#3b82f6';
         const STORAGE_KEY_PREFIX = 'timeline_data_';
         const STORAGE_RECENT_FILE = 'timeline_recent_file';
+        const STORAGE_DEFAULT_COLOR = 'timeline_default_color';
 
         function formatTime(seconds) {
             if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -1004,7 +1308,8 @@
             segmentTitle.value = '';
             segmentTag.value = '';
             segmentNote.value = '';
-            segmentColor.value = '#3b82f6';
+            const defaultColor = localStorage.getItem(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
+            segmentColor.value = defaultColor;
             if (Number.isFinite(video.currentTime)) {
                 const formatted = formatTime(video.currentTime);
                 startTimeInput.value = formatted;
@@ -1267,6 +1572,140 @@
             }
         }
 
+        function getAllCachedFiles() {
+            const files = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(STORAGE_KEY_PREFIX)) {
+                    try {
+                        const data = JSON.parse(localStorage.getItem(key));
+                        const fileName = key.replace(STORAGE_KEY_PREFIX, '');
+                        files.push({
+                            fileName,
+                            segmentsCount: data.segments?.length || 0,
+                            savedAt: data.savedAt
+                        });
+                    } catch (error) {
+                        console.error('파일 정보 파싱 실패:', key, error);
+                    }
+                }
+            }
+            return files;
+        }
+
+        function updateCacheInfo() {
+            const files = getAllCachedFiles();
+            const totalSegments = files.reduce((sum, file) => sum + file.segmentsCount, 0);
+
+            document.getElementById('cachedFilesCount').textContent = `${files.length}개`;
+            document.getElementById('totalSegmentsCount').textContent = `${totalSegments}개`;
+
+            const filesList = document.getElementById('cachedFilesList');
+            if (files.length === 0) {
+                filesList.innerHTML = '<p style="text-align: center; color: var(--text-subtle); padding: 20px;">저장된 파일이 없습니다.</p>';
+                return;
+            }
+
+            filesList.innerHTML = '<div class="cached-files-list"></div>';
+            const listContainer = filesList.querySelector('.cached-files-list');
+
+            files.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'cached-file-item';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'cached-file-name';
+                nameSpan.textContent = file.fileName;
+
+                const countSpan = document.createElement('span');
+                countSpan.className = 'cached-file-count';
+                countSpan.textContent = `${file.segmentsCount}개`;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'danger';
+                deleteBtn.textContent = '삭제';
+                deleteBtn.style.padding = '4px 12px';
+                deleteBtn.style.fontSize = '0.85rem';
+                deleteBtn.addEventListener('click', () => {
+                    if (confirm(`"${file.fileName}"의 타임라인 데이터를 삭제할까요?`)) {
+                        localStorage.removeItem(STORAGE_KEY_PREFIX + file.fileName);
+                        if (selectedFileName === file.fileName) {
+                            segments = [];
+                            renderAll();
+                        }
+                        updateCacheInfo();
+                        showFormStatus('캐시 삭제 완료');
+                    }
+                });
+
+                item.append(nameSpan, countSpan, deleteBtn);
+                listContainer.appendChild(item);
+            });
+        }
+
+        function openSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.add('is-open');
+            updateCacheInfo();
+            loadDefaultSettings();
+        }
+
+        function closeSettings() {
+            const modal = document.getElementById('settingsModal');
+            modal.classList.remove('is-open');
+        }
+
+        function clearCurrentCache() {
+            if (!selectedFileName) {
+                alert('현재 선택된 영상이 없습니다.');
+                return;
+            }
+            if (confirm(`"${selectedFileName}"의 타임라인 데이터를 삭제할까요?`)) {
+                localStorage.removeItem(STORAGE_KEY_PREFIX + selectedFileName);
+                segments = [];
+                renderAll();
+                updateCacheInfo();
+                showFormStatus('현재 영상 캐시 삭제 완료');
+            }
+        }
+
+        function clearAllCache() {
+            const files = getAllCachedFiles();
+            if (files.length === 0) {
+                alert('삭제할 캐시가 없습니다.');
+                return;
+            }
+            if (confirm(`전체 ${files.length}개 영상의 타임라인 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) {
+                files.forEach(file => {
+                    localStorage.removeItem(STORAGE_KEY_PREFIX + file.fileName);
+                });
+                localStorage.removeItem(STORAGE_RECENT_FILE);
+                segments = [];
+                renderAll();
+                updateCacheInfo();
+                showFormStatus('전체 캐시 삭제 완료');
+            }
+        }
+
+        function loadDefaultSettings() {
+            const defaultColor = localStorage.getItem(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
+            document.getElementById('defaultColorSetting').value = defaultColor;
+            segmentColor.value = defaultColor;
+        }
+
+        function saveDefaultColor(color) {
+            localStorage.setItem(STORAGE_DEFAULT_COLOR, color);
+            segmentColor.value = color;
+            showFormStatus('기본 색상 저장 완료');
+        }
+
+        function resetDefaultColor() {
+            localStorage.removeItem(STORAGE_DEFAULT_COLOR);
+            document.getElementById('defaultColorSetting').value = DEFAULT_SEGMENT_COLOR;
+            segmentColor.value = DEFAULT_SEGMENT_COLOR;
+            showFormStatus('기본 색상 초기화 완료');
+        }
+
         function initVideoEvents() {
             video.addEventListener('loadedmetadata', () => {
                 totalDuration = Number.isFinite(video.duration) ? video.duration : 0;
@@ -1363,10 +1802,46 @@
             setActiveTab('editor');
         }
 
+        function initSettings() {
+            const settingsButton = document.getElementById('settingsButton');
+            const closeSettingsButton = document.getElementById('closeSettings');
+            const settingsModal = document.getElementById('settingsModal');
+            const clearCurrentCacheButton = document.getElementById('clearCurrentCache');
+            const clearAllCacheButton = document.getElementById('clearAllCache');
+            const defaultColorSetting = document.getElementById('defaultColorSetting');
+            const resetDefaultColorButton = document.getElementById('resetDefaultColor');
+
+            settingsButton.addEventListener('click', openSettings);
+            closeSettingsButton.addEventListener('click', closeSettings);
+
+            // 모달 배경 클릭 시 닫기
+            settingsModal.addEventListener('click', (e) => {
+                if (e.target === settingsModal) {
+                    closeSettings();
+                }
+            });
+
+            // ESC 키로 닫기
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && settingsModal.classList.contains('is-open')) {
+                    closeSettings();
+                }
+            });
+
+            clearCurrentCacheButton.addEventListener('click', clearCurrentCache);
+            clearAllCacheButton.addEventListener('click', clearAllCache);
+            defaultColorSetting.addEventListener('change', (e) => saveDefaultColor(e.target.value));
+            resetDefaultColorButton.addEventListener('click', resetDefaultColor);
+
+            // 기본 색상 불러오기
+            loadDefaultSettings();
+        }
+
         setVideoAspect();
         resetForm();
         initVideoEvents();
         initControls();
+        initSettings();
         loadRecentFileInfo();
     </script>
 </body>
