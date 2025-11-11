@@ -148,17 +148,26 @@
 
         .workspace-panel.is-active {
             display: flex;
+        }
+
+        #editorPanel.is-active {
             justify-content: center;
+        }
+
+        #timelinePanel.is-active {
+            justify-content: flex-start;
         }
 
         .video-panel {
             padding: clamp(20px, 2.3vw, 30px);
-            height: 100%;
+            height: auto;
+            max-height: 100%;
             display: flex;
             flex-direction: column;
             gap: 14px;
             overflow-y: auto;
             align-items: center;
+            justify-content: center;
         }
 
         .video-panel > * {
@@ -248,6 +257,7 @@
             width: 100%;
             margin-top: 10px;
             color: var(--text-subtle);
+            text-align: center;
         }
 
         .video-frame {
@@ -419,17 +429,18 @@
 
         .form-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: 1fr 1fr auto;
             gap: 12px;
+            align-items: end;
         }
 
         .form-grid .full-width {
             grid-column: 1 / -1;
         }
 
-        .form-grid .quarter-width {
-            grid-column: span 1;
-            max-width: 75%;
+        .form-grid input[type="color"] {
+            width: 100px;
+            height: 42px;
         }
 
         .timeline-bar {
@@ -1040,7 +1051,7 @@
                             <label for="endTime">종료 (mm:ss 혹은 초)</label>
                             <input type="text" id="endTime" placeholder="00:00">
                         </div>
-                        <div class="quarter-width">
+                        <div>
                             <label for="segmentColor">표시 색상</label>
                             <input type="color" id="segmentColor" value="#3b82f6">
                         </div>
