@@ -1032,7 +1032,7 @@
                     <div id="timelineEmptyCompact" class="timeline-empty" style="display:none;">영상 길이를 알 수 없으면 타임라인 막대가 표시되지 않습니다.</div>
                 </div>
 
-                <div class="quick-buttons" style="justify-content: center; margin-top: 10px;">
+                <div class="quick-buttons" style="justify-content: flex-end; margin-top: 10px;">
                     <button class="primary" id="quickAddMemo">현재 장면 메모 추가</button>
                 </div>
             </div>
@@ -1431,6 +1431,9 @@
             segmentNote.value = segment.note || '';
             saveButton.textContent = '수정 저장';
             cancelEditButton.style.display = 'inline-block';
+
+            // 자동으로 메모 입력 탭으로 전환
+            setActiveTab('editor');
         }
 
         function finishEditing() {
