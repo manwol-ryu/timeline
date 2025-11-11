@@ -734,6 +734,7 @@
         let currentVideoUrl = '';
         const DEFAULT_VIDEO_ASPECT = '16 / 9';
         const DEFAULT_SEGMENT_COLOR = '#3b82f6';
+        const STORAGE_KEY = 'timeline_data';
 
         function formatTime(seconds) {
             if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -974,6 +975,7 @@
             segments.sort((a, b) => a.start - b.start);
             renderTimeline();
             renderSegments(searchInput.value);
+            saveToLocalStorage();
         }
 
         function startEditing(id) {
@@ -1172,8 +1174,67 @@
             if (segments.length === 0) return;
             if (!confirm('등록된 모든 메모를 삭제할까요?')) return;
             segments = [];
+            localStorage.removeItem(STORAGE_KEY);
             finishEditing();
             renderAll();
+        }
+
+        function saveToLocalStorage() {
+            try {
+                const data = {
+                    segments,
+                    totalDuration,
+                    selectedFileName,
+                    savedAt: new Date().toISOString()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (error) {
+                console.error('localStorage 저장 실패:', error);
+            }
+        }
+
+        function loadFromLocalStorage() {
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (!stored) return;
+
+                const data = JSON.parse(stored);
+
+                // 세그먼트 데이터 복원
+                if (Array.isArray(data.segments)) {
+                    segments = data.segments.map(segment => ({
+                        ...segment,
+                        id: segment.id || crypto.randomUUID(),
+                        start: Number(segment.start),
+                        end: Number(segment.end),
+                        color: segment.color || DEFAULT_SEGMENT_COLOR,
+                    })).filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
+                }
+
+                // 영상 정보 복원
+                if (typeof data.totalDuration === 'number' && Number.isFinite(data.totalDuration)) {
+                    totalDuration = data.totalDuration;
+                }
+
+                if (typeof data.selectedFileName === 'string' && data.selectedFileName.trim()) {
+                    selectedFileName = data.selectedFileName.trim();
+                    fileNameText.textContent = selectedFileName;
+
+                    const durationText = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
+                    fileDetailsText.textContent = `캐시된 데이터 · 길이 ${durationText}`;
+
+                    uploadCard.style.display = 'none';
+                    fileInfoCard.style.display = 'flex';
+                }
+
+                renderAll();
+
+                if (segments.length > 0) {
+                    showFormStatus(`저장된 데이터 ${segments.length}개 불러왔습니다`);
+                }
+            } catch (error) {
+                console.error('localStorage 불러오기 실패:', error);
+            }
         }
 
         function initVideoEvents() {
@@ -1258,7 +1319,10 @@
         resetForm();
         initVideoEvents();
         initControls();
-        renderAll();
+        loadFromLocalStorage();
+        if (segments.length === 0) {
+            renderAll();
+        }
     </script>
 </body>
 </html>
