@@ -22,6 +22,23 @@
             --shadow: 0 25px 60px rgba(15, 23, 42, 0.08);
         }
 
+        [data-theme="dark"] {
+            --bg-1: #0f172a;
+            --bg-2: #1e293b;
+            --panel: #1e293b;
+            --panel-muted: #334155;
+            --accent: #3b82f6;
+            --accent-strong: #2563eb;
+            --accent-soft: rgba(59, 130, 246, 0.15);
+            --text: #f1f5f9;
+            --text-subtle: #94a3b8;
+            --border: rgba(241, 245, 249, 0.1);
+            --border-strong: #475569;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+        }
+
         * {
             box-sizing: border-box;
         }
@@ -45,19 +62,20 @@
             height: 100%;
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
-            align-items: stretch;
+            align-items: center;
             gap: clamp(6px, 1.2vw, 16px);
         }
 
         .video-stage {
-            height: 100%;
+            height: auto;
         }
 
         .workspace {
             display: flex;
             flex-direction: column;
             gap: 12px;
-            height: 100%;
+            height: auto;
+            max-height: 85vh;
             overflow: hidden;
             border-left: 1px solid var(--border);
             padding-left: clamp(12px, 1vw, 18px);
@@ -104,7 +122,7 @@
         }
 
         .tab-button.is-active {
-            background: #fff;
+            background: var(--panel);
             color: var(--text);
             box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
         }
@@ -134,7 +152,7 @@
             border: 1px dashed var(--border-strong);
             border-radius: 18px;
             padding: 14px;
-            background: #fff;
+            background: var(--panel);
             display: none;
             flex-direction: column;
             gap: 10px;
@@ -288,11 +306,11 @@
         button.primary {
             background: var(--accent);
             color: #fff;
-            box-shadow: 0 15px 35px rgba(37, 99, 235, 0.25);
         }
 
         button.primary:hover {
             background: var(--accent-strong);
+            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.2);
         }
 
         button.ghost {
@@ -302,7 +320,8 @@
         }
 
         button.ghost:hover {
-            background: #fff;
+            background: var(--panel);
+            border-color: var(--accent);
         }
 
         button.success {
@@ -365,14 +384,14 @@
         input[type="color"] {
             padding: 0;
             height: 44px;
-            background: #fff;
+            background: var(--panel);
         }
 
         input[type="text"]:focus,
         textarea:focus {
             outline: none;
             border-color: var(--accent);
-            background: #fff;
+            background: var(--panel);
         }
 
         textarea {
@@ -437,7 +456,7 @@
 
         .search-row input {
             flex: 1;
-            background: #fff;
+            background: var(--panel);
         }
 
         .segments-list {
@@ -447,7 +466,7 @@
         }
 
         .segment-card {
-            background: #fff;
+            background: var(--panel);
             border: 1px solid var(--border-strong);
             border-radius: 16px;
             padding: 16px;
@@ -606,32 +625,56 @@
         }
 
         .close-button {
-            width: 36px;
-            height: 36px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
-            background: var(--panel-muted);
-            border: 1px solid var(--border-strong);
+            background: var(--danger);
+            border: none;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
+            position: relative;
         }
 
         .close-button:hover {
-            background: var(--danger);
-            border-color: var(--danger);
-            transform: rotate(90deg);
+            transform: scale(1.2);
         }
 
         .close-button svg {
-            width: 20px;
-            height: 20px;
-            fill: var(--text);
+            width: 14px;
+            height: 14px;
+            fill: white;
+            opacity: 0;
+            transition: opacity 0.2s ease;
         }
 
         .close-button:hover svg {
-            fill: white;
+            opacity: 1;
+        }
+
+        .close-button::before,
+        .close-button::after {
+            content: '';
+            position: absolute;
+            width: 2px;
+            height: 10px;
+            background: white;
+            transition: opacity 0.2s ease;
+        }
+
+        .close-button::before {
+            transform: rotate(45deg);
+        }
+
+        .close-button::after {
+            transform: rotate(-45deg);
+        }
+
+        .close-button:hover::before,
+        .close-button:hover::after {
+            opacity: 0;
         }
 
         .settings-section {
@@ -706,7 +749,7 @@
             justify-content: space-between;
             align-items: center;
             padding: 8px 12px;
-            background: white;
+            background: var(--panel);
             border-radius: 8px;
             margin-bottom: 8px;
             border: 1px solid var(--border);
@@ -750,6 +793,50 @@
         .setting-row label {
             flex: 1;
             margin: 0;
+        }
+
+        .toggle-switch {
+            position: relative;
+            width: 52px;
+            height: 28px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--border-strong);
+            border-radius: 28px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(24px);
         }
 
         @media (max-width: 980px) {
@@ -855,6 +942,13 @@
             <div class="settings-section">
                 <h3>기본 설정</h3>
                 <p>새 타임라인 메모를 추가할 때 적용되는 기본값을 설정합니다.</p>
+                <div class="setting-row">
+                    <label for="darkModeToggle">다크 모드</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
                 <div class="setting-row">
                     <label for="defaultColorSetting">기본 색상</label>
                     <input type="color" id="defaultColorSetting" value="#3b82f6">
@@ -1040,6 +1134,7 @@
         const STORAGE_KEY_PREFIX = 'timeline_data_';
         const STORAGE_RECENT_FILE = 'timeline_recent_file';
         const STORAGE_DEFAULT_COLOR = 'timeline_default_color';
+        const STORAGE_DARK_MODE = 'timeline_dark_mode';
 
         function formatTime(seconds) {
             if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -1663,6 +1758,9 @@
             if (confirm(`"${selectedFileName}"의 타임라인 데이터를 삭제할까요?`)) {
                 localStorage.removeItem(STORAGE_KEY_PREFIX + selectedFileName);
                 segments = [];
+                selectedFileName = '';
+                uploadCard.style.display = 'block';
+                fileInfoCard.style.display = 'none';
                 renderAll();
                 updateCacheInfo();
                 showFormStatus('현재 영상 캐시 삭제 완료');
@@ -1681,6 +1779,9 @@
                 });
                 localStorage.removeItem(STORAGE_RECENT_FILE);
                 segments = [];
+                selectedFileName = '';
+                uploadCard.style.display = 'block';
+                fileInfoCard.style.display = 'none';
                 renderAll();
                 updateCacheInfo();
                 showFormStatus('전체 캐시 삭제 완료');
@@ -1704,6 +1805,24 @@
             document.getElementById('defaultColorSetting').value = DEFAULT_SEGMENT_COLOR;
             segmentColor.value = DEFAULT_SEGMENT_COLOR;
             showFormStatus('기본 색상 초기화 완료');
+        }
+
+        function toggleDarkMode(enabled) {
+            if (enabled) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem(STORAGE_DARK_MODE, 'true');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem(STORAGE_DARK_MODE, 'false');
+            }
+        }
+
+        function loadDarkMode() {
+            const darkMode = localStorage.getItem(STORAGE_DARK_MODE) === 'true';
+            document.getElementById('darkModeToggle').checked = darkMode;
+            if (darkMode) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
         }
 
         function initVideoEvents() {
@@ -1810,6 +1929,7 @@
             const clearAllCacheButton = document.getElementById('clearAllCache');
             const defaultColorSetting = document.getElementById('defaultColorSetting');
             const resetDefaultColorButton = document.getElementById('resetDefaultColor');
+            const darkModeToggle = document.getElementById('darkModeToggle');
 
             settingsButton.addEventListener('click', openSettings);
             closeSettingsButton.addEventListener('click', closeSettings);
@@ -1832,9 +1952,11 @@
             clearAllCacheButton.addEventListener('click', clearAllCache);
             defaultColorSetting.addEventListener('change', (e) => saveDefaultColor(e.target.value));
             resetDefaultColorButton.addEventListener('click', resetDefaultColor);
+            darkModeToggle.addEventListener('change', (e) => toggleDarkMode(e.target.checked));
 
-            // 기본 색상 불러오기
+            // 기본 색상 및 다크모드 불러오기
             loadDefaultSettings();
+            loadDarkMode();
         }
 
         setVideoAspect();
