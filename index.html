@@ -70,6 +70,7 @@
             height: calc(100vh - 80px);
             display: flex;
             flex-direction: column;
+            justify-content: center;
         }
 
         .workspace {
@@ -84,6 +85,7 @@
 
         .tab-controls {
             flex-shrink: 0;
+            align-self: flex-start;
         }
 
         .workspace-panels {
@@ -93,6 +95,7 @@
             flex: 1;
             min-height: 0;
             overflow: hidden;
+            justify-content: center;
         }
 
         .panel {
@@ -633,8 +636,8 @@
         }
 
         .close-button {
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
             border-radius: 50%;
             background: var(--danger);
             border: none;
@@ -644,6 +647,7 @@
             justify-content: center;
             transition: all 0.2s ease;
             position: relative;
+            flex-shrink: 0;
         }
 
         .close-button:hover {
@@ -652,8 +656,8 @@
 
         .close-button svg {
             position: absolute;
-            width: 12px;
-            height: 12px;
+            width: 14px;
+            height: 14px;
             fill: white;
             opacity: 0;
             transition: opacity 0.2s ease;
@@ -783,8 +787,8 @@
 
         .toggle-switch {
             position: relative;
-            width: 60px;
-            height: 30px;
+            width: 50px;
+            height: 26px;
         }
 
         .toggle-switch input {
@@ -801,17 +805,17 @@
             right: 0;
             bottom: 0;
             background: var(--border-strong);
-            border-radius: 30px;
+            border-radius: 26px;
             transition: background 0.3s ease;
         }
 
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 22px;
-            width: 22px;
-            left: 4px;
-            bottom: 4px;
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
             background: white;
             border-radius: 50%;
             transition: transform 0.3s ease;
@@ -823,7 +827,7 @@
         }
 
         .toggle-switch input:checked + .toggle-slider:before {
-            transform: translateX(30px);
+            transform: translateX(24px);
         }
 
         @media (max-width: 980px) {
