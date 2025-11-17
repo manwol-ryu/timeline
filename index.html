@@ -45,7 +45,7 @@
 
         body {
             margin: 0;
-            padding: 16px clamp(10px, 2vw, 26px);
+            padding: 16px clamp(10px, 2vw, 40px);
             font-family: 'Pretendard', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, var(--bg-1), var(--bg-2));
             color: var(--text);
@@ -54,16 +54,17 @@
             overflow: hidden;
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
+            font-size: clamp(14px, 0.9vw, 18px);
         }
 
         .app-shell {
-            max-width: 1600px;
-            margin: 0 clamp(40px, 5vw, 100px);
+            max-width: 2400px;
+            margin: 0 clamp(40px, 5vw, 180px);
             height: 100%;
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             align-items: center;
-            gap: clamp(6px, 1.2vw, 16px);
+            gap: clamp(6px, 1.2vw, 32px);
         }
 
         .video-stage {
@@ -80,7 +81,7 @@
             height: calc(100vh - 80px);
             overflow: hidden;
             border-left: 1px solid var(--border);
-            padding-left: clamp(12px, 1vw, 18px);
+            padding-left: clamp(12px, 1vw, 32px);
         }
 
         .tab-controls {
@@ -101,12 +102,12 @@
         .panel {
             background: var(--panel);
             border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: clamp(18px, 2vw, 28px);
+            border-radius: clamp(18px, 1.2vw, 24px);
+            padding: clamp(18px, 2vw, 48px);
             box-shadow: var(--shadow);
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: clamp(16px, 1vw, 24px);
         }
 
         .tab-controls {
@@ -159,11 +160,11 @@
         }
 
         .video-panel {
-            padding: clamp(20px, 2.3vw, 30px);
+            padding: clamp(20px, 2.3vw, 50px);
             height: 100%;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: clamp(14px, 1vw, 20px);
             overflow-y: auto;
             align-items: center;
             justify-content: center;
@@ -175,12 +176,12 @@
 
         .file-info {
             border: 1px dashed var(--border-strong);
-            border-radius: 18px;
-            padding: 14px;
+            border-radius: clamp(16px, 1.2vw, 22px);
+            padding: clamp(14px, 1vw, 20px);
             background: var(--panel);
             display: none;
             flex-direction: column;
-            gap: 10px;
+            gap: clamp(10px, 0.8vw, 14px);
         }
 
         .file-meta {
@@ -226,8 +227,8 @@
 
         .video-upload {
             border: 1px dashed var(--border-strong);
-            border-radius: 18px;
-            padding: 16px;
+            border-radius: clamp(16px, 1.2vw, 22px);
+            padding: clamp(16px, 1.2vw, 24px);
             text-align: center;
             color: var(--text-subtle);
             background: var(--panel-muted);
@@ -261,7 +262,7 @@
 
         .video-frame {
             width: 100%;
-            border-radius: 20px;
+            border-radius: clamp(16px, 1.2vw, 24px);
             border: 1px solid var(--border-strong);
             background: #0b1220;
             --video-aspect: 16 / 9;
@@ -281,12 +282,12 @@
         .video-info {
             display: grid;
             grid-template-columns: auto 1fr;
-            gap: 16px;
+            gap: clamp(14px, 1.2vw, 20px);
             align-items: center;
             background: var(--panel-muted);
             border: 1px solid var(--border-strong);
-            border-radius: 18px;
-            padding: 12px 18px;
+            border-radius: clamp(16px, 1.2vw, 22px);
+            padding: clamp(12px, 1vw, 18px) clamp(16px, 1.4vw, 24px);
         }
 
         .video-time {
@@ -321,11 +322,11 @@
 
         button {
             border: 1px solid transparent;
-            border-radius: 12px;
+            border-radius: clamp(10px, 0.8vw, 14px);
             cursor: pointer;
-            font-size: 0.93rem;
+            font-size: clamp(0.85rem, 0.9vw, 1.05rem);
             font-weight: 600;
-            padding: 8px 16px;
+            padding: clamp(8px, 0.6vw, 12px) clamp(16px, 1.2vw, 22px);
             transition: background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, transform 0.1s ease;
         }
 
@@ -392,12 +393,12 @@
         textarea,
         input[type="color"] {
             width: 100%;
-            padding: 10px 12px;
-            border-radius: 14px;
+            padding: clamp(10px, 0.7vw, 14px) clamp(12px, 0.9vw, 16px);
+            border-radius: clamp(12px, 0.9vw, 16px);
             border: 1px solid var(--border-strong);
             background: var(--panel-muted);
             color: var(--text);
-            font-size: 0.95rem;
+            font-size: clamp(0.9rem, 0.9vw, 1.05rem);
             transition: border 0.2s ease, background 0.2s ease;
             font-family: inherit;
         }
@@ -447,7 +448,7 @@
             background: var(--panel-muted);
             border-radius: 999px;
             border: 1px solid var(--border-strong);
-            height: 14px;
+            height: clamp(14px, 1vw, 20px);
             position: relative;
             overflow: hidden;
         }
@@ -505,11 +506,11 @@
         .segment-card {
             background: var(--panel);
             border: 1px solid var(--border-strong);
-            border-radius: 16px;
-            padding: 16px;
+            border-radius: clamp(14px, 1vw, 20px);
+            padding: clamp(16px, 1.2vw, 24px);
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: clamp(10px, 0.8vw, 14px);
             box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
         }
 
@@ -528,8 +529,8 @@
         }
 
         .color-dot {
-            width: 14px;
-            height: 14px;
+            width: clamp(12px, 1vw, 18px);
+            height: clamp(12px, 1vw, 18px);
             border-radius: 50%;
             border: 2px solid #fff;
             box-shadow: 0 0 0 1px var(--border-strong);
@@ -583,10 +584,10 @@
 
         .settings-button {
             position: fixed;
-            top: 20px;
-            right: 20px;
-            width: 48px;
-            height: 48px;
+            top: clamp(20px, 1.5vw, 32px);
+            right: clamp(20px, 1.5vw, 32px);
+            width: clamp(44px, 3vw, 56px);
+            height: clamp(44px, 3vw, 56px);
             border-radius: 50%;
             background: var(--panel);
             border: 1px solid var(--border-strong);
@@ -606,8 +607,8 @@
         }
 
         .settings-button svg {
-            width: 24px;
-            height: 24px;
+            width: clamp(22px, 1.8vw, 30px);
+            height: clamp(22px, 1.8vw, 30px);
             fill: var(--text);
             transition: fill 0.2s ease;
         }
@@ -637,9 +638,9 @@
 
         .settings-content {
             background: var(--panel);
-            border-radius: 20px;
-            padding: 32px;
-            max-width: 600px;
+            border-radius: clamp(18px, 1.2vw, 24px);
+            padding: clamp(28px, 2.2vw, 44px);
+            max-width: clamp(550px, 40vw, 750px);
             width: 100%;
             max-height: 90vh;
             overflow-y: auto;
