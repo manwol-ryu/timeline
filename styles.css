@@ -348,6 +348,70 @@ body {
     opacity: 1;
 }
 
+.player-fab {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    padding: 0;
+    cursor: pointer;
+    z-index: 4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, opacity 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.player-fab:hover {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+.player-fab svg {
+    width: 22px;
+    height: 22px;
+    fill: #fff;
+    pointer-events: none;
+}
+
+.player-fab #fullscreenIconExit {
+    display: none;
+}
+
+.player-fab.is-fullscreen #fullscreenIconEnter {
+    display: none;
+}
+
+.player-fab.is-fullscreen #fullscreenIconExit {
+    display: block;
+}
+
+.video-frame.is-disabled .player-fab {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.video-loading-status {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--text-subtle);
+    line-height: 1.5;
+    min-height: 1em;
+}
+
+.video-loading-status.is-warning {
+    color: #b45309;
+}
+
+.video-loading-status.is-error {
+    color: var(--danger);
+}
+
 .video-info {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -991,6 +1055,13 @@ textarea {
         right: 10px;
         width: 44px;
         height: 44px;
+    }
+
+    .player-fab {
+        width: 44px;
+        height: 44px;
+        top: 12px;
+        right: 12px;
     }
 
     .settings-content {
