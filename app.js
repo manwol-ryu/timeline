@@ -836,67 +836,31 @@ function initVideoEvents() {
 function initFullscreen() {
     if (!fullscreenButton) return;
 
-    function isInFullscreen() {
-        return !!(
-            document.fullscreenElement ||
-            document.webkitFullscreenElement ||
-            video.webkitDisplayingFullscreen
-        );
+    // iPadOS/iOS의 시스템 fullscreen은 비디오 위에 자체 컨트롤 레이어를 덮어
+    // 커스텀 JS 제스처(더블탭/롱프레스)를 받지 못함.
+    // 대신 CSS로 videoFrame을 viewport 전체에 깔아 DOM/리스너를 그대로 유지하면
+    // 오버레이와 제스처가 확대 상태에서도 동일하게 동작함.
+    function isExpanded() {
+        return videoFrame.classList.contains('is-expanded');
     }
 
-    function enterFullscreen() {
-        // iOS Safari: 비디오 엘리먼트 자체에서만 시스템 전체화면 플레이어 호출 가능
-        if (typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenEnabled) {
-            try {
-                video.webkitEnterFullscreen();
-                return;
-            } catch (_) {}
-        }
-        // 표준 Fullscreen API: videoFrame을 fullscreen으로 보내 오버레이/버튼 모두 보이게
-        const target = videoFrame;
-        if (target.requestFullscreen) {
-            target.requestFullscreen().catch(() => {
-                // requestFullscreen 거부 시 비디오 엘리먼트 자체로 폴백
-                if (typeof video.webkitEnterFullscreen === 'function') {
-                    try { video.webkitEnterFullscreen(); } catch (_) {}
-                }
-            });
-        } else if (target.webkitRequestFullscreen) {
-            target.webkitRequestFullscreen();
-        } else if (typeof video.webkitEnterFullscreen === 'function') {
-            try { video.webkitEnterFullscreen(); } catch (_) {}
-        }
-    }
-
-    function exitFullscreen() {
-        if (document.exitFullscreen) {
-            document.exitFullscreen().catch(() => {});
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        } else if (typeof video.webkitExitFullscreen === 'function') {
-            try { video.webkitExitFullscreen(); } catch (_) {}
-        }
+    function setExpanded(expanded) {
+        videoFrame.classList.toggle('is-expanded', expanded);
+        document.body.classList.toggle('is-video-expanded', expanded);
+        fullscreenButton.classList.toggle('is-fullscreen', expanded);
+        fullscreenButton.setAttribute('aria-label', expanded ? '전체화면 종료' : '전체화면 보기');
     }
 
     fullscreenButton.addEventListener('click', () => {
         if (!video.src) return;
-        if (isInFullscreen()) {
-            exitFullscreen();
-        } else {
-            enterFullscreen();
-        }
+        setExpanded(!isExpanded());
     });
 
-    function syncButtonState() {
-        const fs = isInFullscreen();
-        fullscreenButton.classList.toggle('is-fullscreen', fs);
-        fullscreenButton.setAttribute('aria-label', fs ? '전체화면 종료' : '전체화면 보기');
-    }
-
-    document.addEventListener('fullscreenchange', syncButtonState);
-    document.addEventListener('webkitfullscreenchange', syncButtonState);
-    video.addEventListener('webkitbeginfullscreen', syncButtonState);
-    video.addEventListener('webkitendfullscreen', syncButtonState);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isExpanded()) {
+            setExpanded(false);
+        }
+    });
 }
 
 function initGestures() {

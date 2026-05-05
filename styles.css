@@ -396,6 +396,25 @@ body {
     pointer-events: none;
 }
 
+.video-frame.is-expanded {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    aspect-ratio: auto;
+    border-radius: 0;
+    border: none;
+    background: #000;
+    z-index: 9999;
+}
+
+body.is-video-expanded {
+    overflow: hidden;
+}
+
 .video-loading-status {
     margin: 0;
     font-size: 0.85rem;
