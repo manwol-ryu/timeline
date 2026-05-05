@@ -16,6 +16,8 @@ const fileDetailsText = document.getElementById('fileDetails');
 const changeVideoButton = document.getElementById('changeVideo');
 const convertVideoButton = document.getElementById('convertVideo');
 const convertStatus = document.getElementById('convertStatus');
+const videoLoadingStatus = document.getElementById('videoLoadingStatus');
+const fullscreenButton = document.getElementById('fullscreenButton');
 const segmentTitle = document.getElementById('segmentTitle');
 const startTimeInput = document.getElementById('startTime');
 const endTimeInput = document.getElementById('endTime');
@@ -52,6 +54,9 @@ const STORAGE_DEFAULT_COLOR = 'timeline_default_color';
 const STORAGE_DARK_MODE = 'timeline_dark_mode';
 const STORAGE_CLEAR_TITLE = 'timeline_clear_title';
 const STORAGE_CLEAR_TAG = 'timeline_clear_tag';
+const LARGE_FILE_WARNING_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+const SLOW_LOAD_THRESHOLD_MS = 15000;
+let videoLoadingTimer = null;
 
 function formatTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -119,6 +124,7 @@ function updateFileInfo(file) {
         convertStatus.textContent = '';
         convertVideoButton.disabled = false;
         convertVideoButton.textContent = '파일 변환';
+        setVideoLoadingStatus('ready');
         setVideoAspect();
         return;
     }
@@ -130,6 +136,7 @@ function updateFileInfo(file) {
     convertStatus.textContent = '';
     convertVideoButton.disabled = false;
     convertVideoButton.textContent = '파일 변환';
+    setVideoLoadingStatus('ready');
     refreshFileDetails();
 }
 
@@ -765,8 +772,49 @@ function loadDarkMode() {
     }
 }
 
+function setVideoLoadingStatus(state, extra = '') {
+    if (!videoLoadingStatus) return;
+    videoLoadingStatus.classList.remove('is-warning', 'is-error');
+    switch (state) {
+        case 'loading':
+            videoLoadingStatus.textContent = '영상 메타데이터 불러오는 중...';
+            break;
+        case 'slow':
+            videoLoadingStatus.textContent = '⚠️ 영상이 너무 큽니다. MP4의 메타데이터(moov atom)가 파일 끝에 있을 경우 브라우저가 전체 파일을 스캔해야 해서 매우 느리거나 실패할 수 있습니다. faststart로 변환된 MP4를 권장합니다.';
+            videoLoadingStatus.classList.add('is-warning');
+            break;
+        case 'large-file':
+            videoLoadingStatus.textContent = `⚠️ ${extra} - 큰 파일은 메타데이터 위치(moov atom)에 따라 로딩이 매우 느릴 수 있습니다.`;
+            videoLoadingStatus.classList.add('is-warning');
+            break;
+        case 'error':
+            videoLoadingStatus.textContent = '⚠️ 영상을 불러오지 못했습니다. 파일이 너무 크거나 브라우저가 지원하지 않는 형식일 수 있습니다.';
+            videoLoadingStatus.classList.add('is-error');
+            break;
+        case 'ready':
+        default:
+            videoLoadingStatus.textContent = '';
+            break;
+    }
+}
+
 function initVideoEvents() {
+    video.addEventListener('loadstart', () => {
+        clearTimeout(videoLoadingTimer);
+        if (selectedFileSize > LARGE_FILE_WARNING_BYTES) {
+            const sizeText = `${(selectedFileSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+            setVideoLoadingStatus('large-file', sizeText);
+            videoLoadingTimer = setTimeout(() => {
+                setVideoLoadingStatus('slow');
+            }, SLOW_LOAD_THRESHOLD_MS);
+        } else if (video.src) {
+            setVideoLoadingStatus('loading');
+        }
+    });
+
     video.addEventListener('loadedmetadata', () => {
+        clearTimeout(videoLoadingTimer);
+        setVideoLoadingStatus('ready');
         totalDuration = Number.isFinite(video.duration) ? video.duration : 0;
         setTimeBadge();
         renderTimeline();
@@ -775,9 +823,80 @@ function initVideoEvents() {
         updateVideoAspectFromMetadata();
     });
 
+    video.addEventListener('error', () => {
+        clearTimeout(videoLoadingTimer);
+        setVideoLoadingStatus('error');
+    });
+
     video.addEventListener('timeupdate', () => {
         setTimeBadge();
     });
+}
+
+function initFullscreen() {
+    if (!fullscreenButton) return;
+
+    function isInFullscreen() {
+        return !!(
+            document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            video.webkitDisplayingFullscreen
+        );
+    }
+
+    function enterFullscreen() {
+        // iOS Safari: 비디오 엘리먼트 자체에서만 시스템 전체화면 플레이어 호출 가능
+        if (typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenEnabled) {
+            try {
+                video.webkitEnterFullscreen();
+                return;
+            } catch (_) {}
+        }
+        // 표준 Fullscreen API: videoFrame을 fullscreen으로 보내 오버레이/버튼 모두 보이게
+        const target = videoFrame;
+        if (target.requestFullscreen) {
+            target.requestFullscreen().catch(() => {
+                // requestFullscreen 거부 시 비디오 엘리먼트 자체로 폴백
+                if (typeof video.webkitEnterFullscreen === 'function') {
+                    try { video.webkitEnterFullscreen(); } catch (_) {}
+                }
+            });
+        } else if (target.webkitRequestFullscreen) {
+            target.webkitRequestFullscreen();
+        } else if (typeof video.webkitEnterFullscreen === 'function') {
+            try { video.webkitEnterFullscreen(); } catch (_) {}
+        }
+    }
+
+    function exitFullscreen() {
+        if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (typeof video.webkitExitFullscreen === 'function') {
+            try { video.webkitExitFullscreen(); } catch (_) {}
+        }
+    }
+
+    fullscreenButton.addEventListener('click', () => {
+        if (!video.src) return;
+        if (isInFullscreen()) {
+            exitFullscreen();
+        } else {
+            enterFullscreen();
+        }
+    });
+
+    function syncButtonState() {
+        const fs = isInFullscreen();
+        fullscreenButton.classList.toggle('is-fullscreen', fs);
+        fullscreenButton.setAttribute('aria-label', fs ? '전체화면 종료' : '전체화면 보기');
+    }
+
+    document.addEventListener('fullscreenchange', syncButtonState);
+    document.addEventListener('webkitfullscreenchange', syncButtonState);
+    video.addEventListener('webkitbeginfullscreen', syncButtonState);
+    video.addEventListener('webkitendfullscreen', syncButtonState);
 }
 
 function initGestures() {
@@ -1145,4 +1264,5 @@ initVideoEvents();
 initControls();
 initSettings();
 initGestures();
+initFullscreen();
 loadRecentFileInfo();
