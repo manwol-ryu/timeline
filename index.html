@@ -2,8 +2,15 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>영상 타임라인 메모 도구</title>
+    <meta name="theme-color" content="#2563eb">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="타임라인 메모">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon.svg">
     <link rel="stylesheet" href="styles.css">
     <script defer src="app.js"></script>
 </head>
@@ -87,6 +94,38 @@
                         <option value="expand">CSS 확대 (제스처 유지, 권장)</option>
                         <option value="native">시스템 전체화면 (OS 풀스크린)</option>
                     </select>
+                </div>
+            </div>
+
+            <div class="settings-section" id="pwaSection">
+                <h3>홈 화면 앱 (PWA)</h3>
+                <p>홈 화면에 추가하면 주소창과 탭바 없이 진짜 전체화면으로 사용할 수 있어요. CSS 확대 모드와 함께 쓰면 iPad에서 더블탭/2배속 제스처 + 풀스크린이 모두 가능해집니다.</p>
+                <div class="cache-info">
+                    <div class="cache-info-row">
+                        <span class="cache-info-label">현재 실행 모드</span>
+                        <span class="cache-info-value" id="pwaModeStatus">브라우저</span>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <label for="pwaHintToggle">PWA 안내 사용</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="pwaHintToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="pwaInstallBlock" class="pwa-install-block">
+                    <button class="ghost" id="showInstallGuide" type="button">설치 방법 보기</button>
+                    <div id="installGuide" class="install-guide" hidden>
+                        <p><strong>iPad / iPhone (Safari)</strong></p>
+                        <ol>
+                            <li>주소창 옆 또는 하단 공유 아이콘(⬆️) 탭</li>
+                            <li>스크롤해서 <em>“홈 화면에 추가”</em> 선택</li>
+                            <li>이름 확인 후 <em>“추가”</em> 탭</li>
+                            <li>홈 화면의 아이콘으로 실행 → 주소창/탭바 사라짐</li>
+                        </ol>
+                        <p><strong>Android (Chrome)</strong>: 메뉴(⋮) → <em>“앱 설치”</em> 또는 <em>“홈 화면에 추가”</em></p>
+                        <p><strong>데스크톱 (Chrome / Edge)</strong>: 주소창 끝의 설치 아이콘 클릭</p>
+                    </div>
                 </div>
             </div>
 

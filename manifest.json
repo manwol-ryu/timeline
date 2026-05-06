@@ -1,0 +1,20 @@
+{
+    "name": "영상 타임라인 메모 도구",
+    "short_name": "타임라인 메모",
+    "description": "로컬 영상에 구간별 메모를 추가하는 도구",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#0f172a",
+    "theme_color": "#2563eb",
+    "lang": "ko",
+    "icons": [
+        {
+            "src": "icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ]
+}

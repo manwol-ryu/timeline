@@ -56,6 +56,27 @@ const STORAGE_CLEAR_TITLE = 'timeline_clear_title';
 const STORAGE_CLEAR_TAG = 'timeline_clear_tag';
 const STORAGE_FULLSCREEN_MODE = 'timeline_fullscreen_mode';
 const FULLSCREEN_MODE_DEFAULT = 'expand';
+const STORAGE_PWA_HINT = 'timeline_pwa_hint';
+
+function isPwaHintEnabled() {
+    const stored = localStorage.getItem(STORAGE_PWA_HINT);
+    return stored === null ? true : stored === 'true';
+}
+
+function setPwaHintEnabled(enabled) {
+    localStorage.setItem(STORAGE_PWA_HINT, enabled ? 'true' : 'false');
+}
+
+function isInStandalone() {
+    if (typeof window === 'undefined') return false;
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+        return true;
+    }
+    if (window.navigator && window.navigator.standalone === true) {
+        return true;
+    }
+    return false;
+}
 const LARGE_FILE_WARNING_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
 const SLOW_LOAD_THRESHOLD_MS = 15000;
 let videoLoadingTimer = null;
@@ -748,6 +769,27 @@ function loadDefaultSettings() {
     if (fullscreenSelect) {
         fullscreenSelect.value = getFullscreenMode();
     }
+
+    syncPwaUi();
+}
+
+function syncPwaUi() {
+    const section = document.getElementById('pwaSection');
+    const status = document.getElementById('pwaModeStatus');
+    const toggle = document.getElementById('pwaHintToggle');
+    if (!section) return;
+
+    const standalone = isInStandalone();
+    const hintEnabled = isPwaHintEnabled();
+
+    if (status) {
+        status.textContent = standalone ? 'PWA (홈 화면 앱)' : '브라우저';
+        status.style.color = standalone ? 'var(--success)' : 'var(--accent)';
+    }
+    if (toggle) {
+        toggle.checked = hintEnabled;
+    }
+    section.classList.toggle('is-disabled', !hintEnabled);
 }
 
 function toggleClearTitle(enabled) {
@@ -1304,6 +1346,40 @@ function initSettings() {
             setFullscreenMode(e.target.value);
             showFormStatus('전체화면 방식 저장됨');
         });
+    }
+
+    const pwaHintToggle = document.getElementById('pwaHintToggle');
+    const showInstallGuideButton = document.getElementById('showInstallGuide');
+    const installGuide = document.getElementById('installGuide');
+
+    if (pwaHintToggle) {
+        pwaHintToggle.addEventListener('change', (e) => {
+            setPwaHintEnabled(e.target.checked);
+            syncPwaUi();
+            showFormStatus(e.target.checked ? 'PWA 안내 사용' : 'PWA 안내 끔');
+        });
+    }
+    if (showInstallGuideButton && installGuide) {
+        showInstallGuideButton.addEventListener('click', () => {
+            const isVisible = !installGuide.hasAttribute('hidden');
+            if (isVisible) {
+                installGuide.setAttribute('hidden', '');
+                showInstallGuideButton.textContent = '설치 방법 보기';
+            } else {
+                installGuide.removeAttribute('hidden');
+                showInstallGuideButton.textContent = '설치 방법 숨기기';
+            }
+        });
+    }
+    // 설치 모드 변화(예: 홈 화면 앱으로 다시 열림) 감지
+    if (window.matchMedia) {
+        const standaloneQuery = window.matchMedia('(display-mode: standalone)');
+        const onChange = () => syncPwaUi();
+        if (standaloneQuery.addEventListener) {
+            standaloneQuery.addEventListener('change', onChange);
+        } else if (standaloneQuery.addListener) {
+            standaloneQuery.addListener(onChange);
+        }
     }
 
     // 기본 색상 및 다크모드 불러오기
