@@ -48,6 +48,8 @@ body {
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     font-size: clamp(14px, 0.9vw, 18px);
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
 }
 
 .app-shell {
