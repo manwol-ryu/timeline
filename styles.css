@@ -961,6 +961,23 @@ textarea {
     border-radius: 8px;
 }
 
+.select-input {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border-strong);
+    background: var(--panel);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    min-height: 40px;
+}
+
+.select-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .setting-row label {
     flex: 0 0 auto;
     margin: 0;

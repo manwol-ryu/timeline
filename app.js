@@ -54,9 +54,21 @@ const STORAGE_DEFAULT_COLOR = 'timeline_default_color';
 const STORAGE_DARK_MODE = 'timeline_dark_mode';
 const STORAGE_CLEAR_TITLE = 'timeline_clear_title';
 const STORAGE_CLEAR_TAG = 'timeline_clear_tag';
+const STORAGE_FULLSCREEN_MODE = 'timeline_fullscreen_mode';
+const FULLSCREEN_MODE_DEFAULT = 'expand';
 const LARGE_FILE_WARNING_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
 const SLOW_LOAD_THRESHOLD_MS = 15000;
 let videoLoadingTimer = null;
+
+function getFullscreenMode() {
+    const stored = localStorage.getItem(STORAGE_FULLSCREEN_MODE);
+    return stored === 'native' ? 'native' : FULLSCREEN_MODE_DEFAULT;
+}
+
+function setFullscreenMode(mode) {
+    if (mode !== 'native' && mode !== 'expand') return;
+    localStorage.setItem(STORAGE_FULLSCREEN_MODE, mode);
+}
 
 function formatTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
@@ -731,6 +743,11 @@ function loadDefaultSettings() {
     const clearTag = localStorage.getItem(STORAGE_CLEAR_TAG) === 'true';
     document.getElementById('clearTitleToggle').checked = clearTitle;
     document.getElementById('clearTagToggle').checked = clearTag;
+
+    const fullscreenSelect = document.getElementById('fullscreenModeSetting');
+    if (fullscreenSelect) {
+        fullscreenSelect.value = getFullscreenMode();
+    }
 }
 
 function toggleClearTitle(enabled) {
@@ -836,24 +853,84 @@ function initVideoEvents() {
 function initFullscreen() {
     if (!fullscreenButton) return;
 
-    // iPadOS/iOS의 시스템 fullscreen은 비디오 위에 자체 컨트롤 레이어를 덮어
-    // 커스텀 JS 제스처(더블탭/롱프레스)를 받지 못함.
-    // 대신 CSS로 videoFrame을 viewport 전체에 깔아 DOM/리스너를 그대로 유지하면
-    // 오버레이와 제스처가 확대 상태에서도 동일하게 동작함.
+    // 두 가지 모드 지원:
+    // - 'expand' (기본): CSS로 videoFrame을 viewport 전체에 고정. DOM/리스너가
+    //   그대로 유지되어 더블탭/롱프레스 제스처가 그대로 동작. iPad에서 권장.
+    // - 'native': 표준 Fullscreen API + iOS webkitEnterFullscreen 폴백. OS 레벨
+    //   풀스크린이지만 iPad/iPhone에서는 시스템 컨트롤 레이어가 터치를 가로채
+    //   커스텀 제스처가 비활성화됨.
+
     function isExpanded() {
         return videoFrame.classList.contains('is-expanded');
+    }
+
+    function isInNativeFullscreen() {
+        return !!(
+            document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            video.webkitDisplayingFullscreen
+        );
     }
 
     function setExpanded(expanded) {
         videoFrame.classList.toggle('is-expanded', expanded);
         document.body.classList.toggle('is-video-expanded', expanded);
-        fullscreenButton.classList.toggle('is-fullscreen', expanded);
-        fullscreenButton.setAttribute('aria-label', expanded ? '전체화면 종료' : '전체화면 보기');
+        syncButtonState();
+    }
+
+    function enterNativeFullscreen() {
+        // iOS에서 표준 Fullscreen API가 지원되지 않을 때만 비디오 자체로 진입
+        if (typeof video.webkitEnterFullscreen === 'function' && !document.fullscreenEnabled) {
+            try {
+                video.webkitEnterFullscreen();
+                return;
+            } catch (_) {}
+        }
+        const target = videoFrame;
+        if (target.requestFullscreen) {
+            target.requestFullscreen().catch(() => {
+                if (typeof video.webkitEnterFullscreen === 'function') {
+                    try { video.webkitEnterFullscreen(); } catch (_) {}
+                }
+            });
+        } else if (target.webkitRequestFullscreen) {
+            target.webkitRequestFullscreen();
+        } else if (typeof video.webkitEnterFullscreen === 'function') {
+            try { video.webkitEnterFullscreen(); } catch (_) {}
+        }
+    }
+
+    function exitNativeFullscreen() {
+        if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else if (typeof video.webkitExitFullscreen === 'function') {
+            try { video.webkitExitFullscreen(); } catch (_) {}
+        }
+    }
+
+    function syncButtonState() {
+        const active = isExpanded() || isInNativeFullscreen();
+        fullscreenButton.classList.toggle('is-fullscreen', active);
+        fullscreenButton.setAttribute('aria-label', active ? '전체화면 종료' : '전체화면 보기');
     }
 
     fullscreenButton.addEventListener('click', () => {
         if (!video.src) return;
-        setExpanded(!isExpanded());
+        if (isExpanded()) {
+            setExpanded(false);
+            return;
+        }
+        if (isInNativeFullscreen()) {
+            exitNativeFullscreen();
+            return;
+        }
+        if (getFullscreenMode() === 'native') {
+            enterNativeFullscreen();
+        } else {
+            setExpanded(true);
+        }
     });
 
     document.addEventListener('keydown', (e) => {
@@ -861,6 +938,11 @@ function initFullscreen() {
             setExpanded(false);
         }
     });
+
+    document.addEventListener('fullscreenchange', syncButtonState);
+    document.addEventListener('webkitfullscreenchange', syncButtonState);
+    video.addEventListener('webkitbeginfullscreen', syncButtonState);
+    video.addEventListener('webkitendfullscreen', syncButtonState);
 }
 
 function initGestures() {
@@ -1191,6 +1273,7 @@ function initSettings() {
     const darkModeToggle = document.getElementById('darkModeToggle');
     const clearTitleToggle = document.getElementById('clearTitleToggle');
     const clearTagToggle = document.getElementById('clearTagToggle');
+    const fullscreenModeSelect = document.getElementById('fullscreenModeSetting');
 
     settingsButton.addEventListener('click', openSettings);
     closeSettingsButton.addEventListener('click', closeSettings);
@@ -1216,6 +1299,12 @@ function initSettings() {
     darkModeToggle.addEventListener('change', (e) => toggleDarkMode(e.target.checked));
     clearTitleToggle.addEventListener('change', (e) => toggleClearTitle(e.target.checked));
     clearTagToggle.addEventListener('change', (e) => toggleClearTag(e.target.checked));
+    if (fullscreenModeSelect) {
+        fullscreenModeSelect.addEventListener('change', (e) => {
+            setFullscreenMode(e.target.value);
+            showFormStatus('전체화면 방식 저장됨');
+        });
+    }
 
     // 기본 색상 및 다크모드 불러오기
     loadDefaultSettings();
