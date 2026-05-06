@@ -1087,7 +1087,6 @@ textarea {
 [data-design="ipad"] .workspace {
     overflow: hidden;
     border-left: none;
-    padding-left: 0;
 }
 
 [data-design="ipad"] .video-frame {
@@ -1178,7 +1177,6 @@ textarea {
     [data-design="ipad"] .workspace {
         overflow: hidden;
         border-left: none;
-        padding-left: 0;
     }
 
     [data-design="ipad"] .workspace-panels {
@@ -1302,7 +1300,6 @@ textarea {
     .workspace {
         overflow: visible;
         border-left: none;
-        padding-left: 0;
     }
 
     .workspace-panels {
