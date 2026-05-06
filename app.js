@@ -57,6 +57,29 @@ const STORAGE_CLEAR_TAG = 'timeline_clear_tag';
 const STORAGE_FULLSCREEN_MODE = 'timeline_fullscreen_mode';
 const FULLSCREEN_MODE_DEFAULT = 'expand';
 const STORAGE_PWA_HINT = 'timeline_pwa_hint';
+const STORAGE_DESIGN = 'timeline_design';
+const DESIGN_DEFAULT = 'default';
+const VALID_DESIGNS = ['default', 'ipad'];
+
+function getDesign() {
+    const stored = localStorage.getItem(STORAGE_DESIGN);
+    return VALID_DESIGNS.includes(stored) ? stored : DESIGN_DEFAULT;
+}
+
+function setDesign(design) {
+    if (!VALID_DESIGNS.includes(design)) return;
+    localStorage.setItem(STORAGE_DESIGN, design);
+    applyDesign();
+}
+
+function applyDesign() {
+    const design = getDesign();
+    if (design === DESIGN_DEFAULT) {
+        document.documentElement.removeAttribute('data-design');
+    } else {
+        document.documentElement.setAttribute('data-design', design);
+    }
+}
 
 function isPwaHintEnabled() {
     const stored = localStorage.getItem(STORAGE_PWA_HINT);
@@ -770,6 +793,11 @@ function loadDefaultSettings() {
         fullscreenSelect.value = getFullscreenMode();
     }
 
+    const designSelect = document.getElementById('designSelect');
+    if (designSelect) {
+        designSelect.value = getDesign();
+    }
+
     syncPwaUi();
 }
 
@@ -1348,6 +1376,14 @@ function initSettings() {
         });
     }
 
+    const designSelect = document.getElementById('designSelect');
+    if (designSelect) {
+        designSelect.addEventListener('change', (e) => {
+            setDesign(e.target.value);
+            showFormStatus('디자인 변경됨');
+        });
+    }
+
     const pwaHintToggle = document.getElementById('pwaHintToggle');
     const showInstallGuideButton = document.getElementById('showInstallGuide');
     const installGuide = document.getElementById('installGuide');
@@ -1387,6 +1423,7 @@ function initSettings() {
     loadDarkMode();
 }
 
+applyDesign();
 setVideoAspect();
 resetForm();
 initVideoEvents();
