@@ -1041,6 +1041,185 @@ textarea {
     }
 }
 
+/* ============================================================
+ * iPad 4:3 최적화 디자인 (data-design="ipad")
+ * - 가로 모드(1024×768): 두 칼럼 유지, 비율 60/40
+ * - 세로 모드(768×1024): 상하 분할, 영상 위 / 메모 아래
+ * - 터치 타겟 44px, 16px 입력 폰트(자동 줌 방지)
+ * ============================================================ */
+
+[data-design="ipad"] body {
+    padding: 8px clamp(8px, 1.5vw, 18px);
+    height: 100vh;
+    overflow: hidden;
+    font-size: 15px;
+}
+
+[data-design="ipad"] .app-shell {
+    margin: 0 auto;
+    max-width: 100%;
+    width: 100%;
+    height: calc(100vh - 16px);
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: 12px;
+}
+
+[data-design="ipad"] .video-stage,
+[data-design="ipad"] .workspace {
+    height: 100%;
+    min-height: 0;
+}
+
+[data-design="ipad"] .video-panel {
+    padding: 14px;
+    gap: 10px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+[data-design="ipad"] .panel {
+    border-radius: 18px;
+    padding: 14px;
+    gap: 12px;
+}
+
+[data-design="ipad"] .workspace {
+    overflow: hidden;
+    border-left: none;
+    padding-left: 0;
+}
+
+[data-design="ipad"] .video-frame {
+    border-radius: 14px;
+}
+
+[data-design="ipad"] button {
+    min-height: 44px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    padding: 10px 16px;
+}
+
+[data-design="ipad"] .tab-button {
+    padding: 10px 18px;
+}
+
+[data-design="ipad"] input[type="text"],
+[data-design="ipad"] textarea {
+    font-size: 16px;
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+
+[data-design="ipad"] textarea {
+    min-height: 90px;
+}
+
+[data-design="ipad"] .video-info {
+    padding: 10px 14px;
+    border-radius: 14px;
+    gap: 12px;
+}
+
+[data-design="ipad"] .file-info {
+    padding: 12px;
+    border-radius: 14px;
+    gap: 8px;
+}
+
+[data-design="ipad"] .file-name {
+    font-size: 0.95rem;
+}
+
+[data-design="ipad"] .form-grid {
+    gap: 10px;
+}
+
+[data-design="ipad"] .segment-card {
+    padding: 14px;
+    border-radius: 14px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+[data-design="ipad"] .settings-button {
+    top: 8px;
+    right: 8px;
+    width: 42px;
+    height: 42px;
+}
+
+/* iPad 가로 모드 (4:3, 1024×768) — 일반 max-width:1180px의 단일 칼럼 강제를 무력화 */
+@media (max-width: 1180px) {
+    [data-design="ipad"] body {
+        height: 100vh;
+        min-height: 100vh;
+        overflow: hidden;
+        padding: 8px clamp(8px, 1.5vw, 18px);
+    }
+
+    [data-design="ipad"] .app-shell {
+        margin: 0 auto;
+        height: calc(100vh - 16px);
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+        grid-auto-rows: auto;
+        max-width: 100%;
+    }
+
+    [data-design="ipad"] .video-stage,
+    [data-design="ipad"] .workspace {
+        height: 100%;
+    }
+
+    [data-design="ipad"] .video-panel {
+        height: 100%;
+    }
+
+    [data-design="ipad"] .workspace {
+        overflow: hidden;
+        border-left: none;
+        padding-left: 0;
+    }
+
+    [data-design="ipad"] .workspace-panels {
+        justify-content: flex-start;
+    }
+}
+
+/* iPad 세로 모드 — 상하 분할 */
+@media (orientation: portrait) and (max-width: 1180px) {
+    [data-design="ipad"] body {
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+    }
+
+    [data-design="ipad"] .app-shell {
+        height: auto;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+    }
+
+    [data-design="ipad"] .video-stage,
+    [data-design="ipad"] .workspace {
+        height: auto;
+    }
+
+    [data-design="ipad"] .video-panel {
+        height: auto;
+    }
+
+    [data-design="ipad"] .tab-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    [data-design="ipad"] .tab-button {
+        flex: 1;
+        text-align: center;
+    }
+}
+
 .setting-row label {
     flex: 0 0 auto;
     margin: 0;
