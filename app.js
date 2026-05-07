@@ -109,6 +109,236 @@ function applyDesign() {
     } else if (design !== 'premiere' && zone) {
         zone.hidden = true;
     }
+
+    if (typeof renderPremiereTimeline === 'function') {
+        renderPremiereTimeline();
+    }
+}
+
+function isPremiereDesign() {
+    return document.documentElement.getAttribute('data-design') === 'premiere';
+}
+
+function buildPremiereTimelineDom() {
+    const view = document.createElement('div');
+    view.id = 'premiereTimelineView';
+    view.className = 'premiere-tl-view';
+    view.innerHTML = `
+        <div class="premiere-tl-toolbar">
+            <button type="button" class="premiere-tl-import">📁 IMPORT</button>
+            <span class="premiere-tl-file" data-empty="파일이 선택되지 않음">파일이 선택되지 않음</span>
+            <span class="premiere-tl-rate">2x</span>
+        </div>
+        <div class="premiere-tl-main">
+            <div class="premiere-tl-tracks-area">
+                <div class="premiere-tl-headers">
+                    <div class="premiere-tl-header-spacer"></div>
+                    <div class="premiere-tl-track-header">V2</div>
+                    <div class="premiere-tl-track-header">V1</div>
+                    <div class="premiere-tl-track-header audio">A1</div>
+                    <div class="premiere-tl-track-header audio">A2</div>
+                </div>
+                <div class="premiere-tl-canvas">
+                    <div class="premiere-tl-ruler"></div>
+                    <div class="premiere-tl-track v2"></div>
+                    <div class="premiere-tl-track v1"></div>
+                    <div class="premiere-tl-track a1 audio"></div>
+                    <div class="premiere-tl-track a2 audio"></div>
+                    <div class="premiere-tl-playhead" hidden><div class="premiere-tl-playhead-head"></div></div>
+                </div>
+            </div>
+            <aside class="premiere-tl-detail" hidden>
+                <div class="premiere-tl-detail-header">
+                    <span class="premiere-tl-detail-title">제목 없음</span>
+                    <button type="button" class="premiere-tl-detail-close" aria-label="닫기">✕</button>
+                </div>
+                <div class="premiere-tl-detail-body">
+                    <div class="premiere-tl-detail-time">--:-- ~ --:--</div>
+                    <span class="premiere-tl-detail-tag" hidden></span>
+                    <p class="premiere-tl-detail-note"></p>
+                </div>
+                <div class="premiere-tl-detail-actions">
+                    <button type="button" class="ghost" data-action="seek">이동</button>
+                    <button type="button" class="primary" data-action="play">재생</button>
+                    <button type="button" class="ghost" data-action="edit">수정</button>
+                    <button type="button" class="danger" data-action="delete">삭제</button>
+                </div>
+            </aside>
+        </div>
+    `;
+
+    view.querySelector('.premiere-tl-import').addEventListener('click', () => {
+        const input = document.getElementById('videoInput');
+        if (input) input.click();
+    });
+
+    const detail = view.querySelector('.premiere-tl-detail');
+    view.querySelector('.premiere-tl-detail-close').addEventListener('click', () => {
+        detail.hidden = true;
+        view.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
+    });
+
+    view.querySelector('.premiere-tl-detail-actions').addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-action]');
+        if (!btn) return;
+        const id = detail.dataset.id;
+        if (!id) return;
+        const seg = segments.find(s => String(s.id) === String(id));
+        if (!seg) return;
+        const action = btn.dataset.action;
+        if (action === 'seek' && Number.isFinite(seg.start)) {
+            video.currentTime = seg.start;
+        } else if (action === 'play' && Number.isFinite(seg.start)) {
+            video.currentTime = seg.start;
+            video.play();
+        } else if (action === 'edit') {
+            startEditing(seg.id);
+            detail.hidden = true;
+        } else if (action === 'delete') {
+            if (!confirm('이 구간 메모를 삭제할까요?')) return;
+            segments = segments.filter(item => item.id !== seg.id);
+            finishEditing();
+            renderAll();
+            detail.hidden = true;
+        }
+    });
+
+    return view;
+}
+
+function ensurePremiereTimelineView() {
+    let view = document.getElementById('premiereTimelineView');
+    if (!view) {
+        const panel = document.getElementById('timelinePanel');
+        if (!panel) return null;
+        view = buildPremiereTimelineDom();
+        panel.appendChild(view);
+    }
+    return view;
+}
+
+function formatBytesShort(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function renderPremiereTimeline() {
+    if (!isPremiereDesign()) return;
+    const view = ensurePremiereTimelineView();
+    if (!view) return;
+
+    const fileLabel = view.querySelector('.premiere-tl-file');
+    if (fileLabel) {
+        const sizePart = selectedFileSize ? formatBytesShort(selectedFileSize) : '';
+        const durPart = totalDuration > 0 ? formatTime(totalDuration) : '';
+        const parts = [selectedFileName, sizePart, durPart].filter(Boolean);
+        fileLabel.textContent = parts.length ? parts.join(' · ') : fileLabel.dataset.empty;
+    }
+
+    const ruler = view.querySelector('.premiere-tl-ruler');
+    ruler.innerHTML = '';
+    const v2 = view.querySelector('.premiere-tl-track.v2');
+    const v1 = view.querySelector('.premiere-tl-track.v1');
+    const a1 = view.querySelector('.premiere-tl-track.a1');
+    v2.innerHTML = '';
+    v1.innerHTML = '';
+    a1.innerHTML = '';
+
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+        const playhead = view.querySelector('.premiere-tl-playhead');
+        if (playhead) playhead.hidden = true;
+        return;
+    }
+
+    const ticks = 8;
+    for (let i = 0; i <= ticks; i++) {
+        const t = (totalDuration / ticks) * i;
+        const tick = document.createElement('span');
+        tick.className = 'premiere-tl-ruler-tick';
+        tick.style.left = `${(i / ticks) * 100}%`;
+        tick.textContent = formatTime(t);
+        ruler.appendChild(tick);
+    }
+
+    const v1Clip = document.createElement('div');
+    v1Clip.className = 'premiere-tl-clip v1-clip';
+    v1Clip.style.left = '0%';
+    v1Clip.style.width = '100%';
+    v1Clip.innerHTML = `<span>${selectedFileName ? selectedFileName : 'main video'}</span>`;
+    v1.appendChild(v1Clip);
+
+    const a1Clip = document.createElement('div');
+    a1Clip.className = 'premiere-tl-clip a1-clip';
+    a1Clip.style.left = '0%';
+    a1Clip.style.width = '100%';
+    a1Clip.innerHTML = `<span>♪ audio</span>`;
+    a1.appendChild(a1Clip);
+
+    segments.forEach(seg => {
+        if (!Number.isFinite(seg.start) || !Number.isFinite(seg.end)) return;
+        const startPct = Math.max(0, Math.min(100, (seg.start / totalDuration) * 100));
+        const endPct = Math.max(0, Math.min(100, (seg.end / totalDuration) * 100));
+        const widthPct = Math.max(0.5, endPct - startPct);
+        const clip = document.createElement('div');
+        clip.className = 'premiere-tl-clip v2-clip';
+        clip.style.left = `${startPct}%`;
+        clip.style.width = `${widthPct}%`;
+        if (seg.color) {
+            clip.style.background = seg.color;
+            clip.style.borderColor = 'rgba(0,0,0,0.5)';
+        }
+        clip.dataset.id = seg.id;
+        clip.title = `${seg.title || '제목 없음'} (${formatTime(seg.start)} ~ ${formatTime(seg.end)})`;
+        clip.innerHTML = `<span>${seg.title || '제목 없음'}</span>`;
+        clip.addEventListener('click', (e) => {
+            e.stopPropagation();
+            view.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
+            clip.classList.add('selected');
+            openPremiereClipDetail(seg.id);
+        });
+        v2.appendChild(clip);
+    });
+
+    updatePremierePlayhead();
+}
+
+function openPremiereClipDetail(segId) {
+    const view = document.getElementById('premiereTimelineView');
+    if (!view) return;
+    const seg = segments.find(s => s.id === segId);
+    if (!seg) return;
+    const detail = view.querySelector('.premiere-tl-detail');
+    detail.hidden = false;
+    detail.dataset.id = String(seg.id);
+    detail.querySelector('.premiere-tl-detail-title').textContent = seg.title || '제목 없음';
+    detail.querySelector('.premiere-tl-detail-time').textContent =
+        `${formatTime(seg.start)} ~ ${formatTime(seg.end)}`;
+    detail.querySelector('.premiere-tl-detail-note').textContent = seg.note || '작성된 메모가 없습니다.';
+    const tagEl = detail.querySelector('.premiere-tl-detail-tag');
+    if (seg.tag) {
+        tagEl.textContent = `#${seg.tag}`;
+        tagEl.hidden = false;
+    } else {
+        tagEl.hidden = true;
+    }
+}
+
+function updatePremierePlayhead() {
+    if (!isPremiereDesign()) return;
+    const view = document.getElementById('premiereTimelineView');
+    if (!view) return;
+    const playhead = view.querySelector('.premiere-tl-playhead');
+    if (!playhead) return;
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+        playhead.hidden = true;
+        return;
+    }
+    playhead.hidden = false;
+    const pct = Math.max(0, Math.min(100, (video.currentTime / totalDuration) * 100));
+    playhead.style.left = `${pct}%`;
 }
 
 function isPwaHintEnabled() {
@@ -224,6 +454,7 @@ function updateFileInfo(file) {
     convertVideoButton.textContent = '파일 변환';
     setVideoLoadingStatus('ready');
     refreshFileDetails();
+    renderPremiereTimeline();
 }
 
 function simulateConversion() {
@@ -385,6 +616,7 @@ function renderAll() {
     segments.sort((a, b) => a.start - b.start);
     renderTimeline();
     renderSegments(searchInput.value);
+    renderPremiereTimeline();
     saveToLocalStorage();
 }
 
@@ -935,6 +1167,7 @@ function initVideoEvents() {
         totalDuration = Number.isFinite(video.duration) ? video.duration : 0;
         setTimeBadge();
         renderTimeline();
+        renderPremiereTimeline();
         resetForm();
         refreshFileDetails();
         updateVideoAspectFromMetadata();
@@ -947,6 +1180,7 @@ function initVideoEvents() {
 
     video.addEventListener('timeupdate', () => {
         setTimeBadge();
+        updatePremierePlayhead();
     });
 }
 

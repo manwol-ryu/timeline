@@ -1917,3 +1917,428 @@ textarea {
         min-height: 360px;
     }
 }
+
+/* ============================================================
+ * 프리미어 멀티트랙 타임라인 뷰 (premiere 모드 한정)
+ * ============================================================ */
+
+#premiereTimelineView {
+    display: none;
+}
+
+[data-design="premiere"] #premiereTimelineView {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--premiere-bg-track);
+}
+
+/* 프리미어 모드에서 기존 단순 타임라인 / 검색 / 카드 리스트는 숨김 */
+[data-design="premiere"] #timelinePanel > div:first-child,
+[data-design="premiere"] #timelinePanel .search-row,
+[data-design="premiere"] #timelinePanel .segments-list,
+[data-design="premiere"] #timelinePanel #segmentsEmpty {
+    display: none !important;
+}
+
+/* 툴바 */
+[data-design="premiere"] .premiere-tl-toolbar {
+    height: 34px;
+    background: var(--premiere-toolbar-bg);
+    border-bottom: 1px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-import {
+    height: 24px !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 2px !important;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+[data-design="premiere"] .premiere-tl-file {
+    flex: 1;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-design="premiere"] .premiere-tl-rate {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-weight: 600;
+    color: var(--accent);
+    font-size: 12px;
+    padding: 0 8px;
+}
+
+/* 본문 영역 (트랙들 + 디테일 패널) */
+[data-design="premiere"] .premiere-tl-main {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+}
+
+[data-design="premiere"] .premiere-tl-tracks-area {
+    flex: 1;
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* 트랙 헤더 (V2 V1 A1 A2) */
+[data-design="premiere"] .premiere-tl-headers {
+    width: 52px;
+    flex-shrink: 0;
+    background: var(--premiere-bg-row-alt);
+    border-right: 1px solid var(--border-strong);
+    display: flex;
+    flex-direction: column;
+}
+
+[data-design="premiere"] .premiere-tl-header-spacer {
+    height: 22px;
+    background: var(--premiere-toolbar-bg);
+    border-bottom: 1px solid var(--border-strong);
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-track-header {
+    height: 56px;
+    border-bottom: 1px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--premiere-bg-row-alt);
+}
+
+[data-design="premiere"] .premiere-tl-track-header.audio {
+    background: rgba(40, 80, 60, 0.18);
+}
+
+[data-design="premiere"][data-theme="dark"] .premiere-tl-track-header.audio {
+    background: rgba(60, 120, 90, 0.14);
+}
+
+/* 트랙 캔버스 (룰러 + 트랙들) */
+[data-design="premiere"] .premiere-tl-canvas {
+    flex: 1;
+    position: relative;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: var(--premiere-bg-track);
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 룰러 (시간 눈금) */
+[data-design="premiere"] .premiere-tl-ruler {
+    height: 22px;
+    position: relative;
+    background: var(--premiere-toolbar-bg);
+    border-bottom: 1px solid var(--border-strong);
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-ruler-tick {
+    position: absolute;
+    top: 4px;
+    transform: translateX(2px);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 9px;
+    color: var(--text-subtle);
+    line-height: 1;
+    letter-spacing: 0.02em;
+}
+
+[data-design="premiere"] .premiere-tl-ruler-tick::before {
+    content: '';
+    position: absolute;
+    bottom: -16px;
+    left: -2px;
+    width: 1px;
+    height: 8px;
+    background: var(--text-subtle);
+    opacity: 0.6;
+}
+
+/* 트랙 행 */
+[data-design="premiere"] .premiere-tl-track {
+    height: 56px;
+    position: relative;
+    border-bottom: 1px solid var(--border-strong);
+    background: var(--premiere-bg-row-alt);
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-track.v1 {
+    background: var(--premiere-bg-track);
+}
+
+[data-design="premiere"] .premiere-tl-track.audio {
+    background: rgba(40, 80, 60, 0.10);
+}
+
+[data-design="premiere"][data-theme="dark"] .premiere-tl-track.audio {
+    background: rgba(60, 120, 90, 0.10);
+}
+
+/* 클립 */
+[data-design="premiere"] .premiere-tl-clip {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    border-radius: 2px;
+    border: 1px solid rgba(0, 0, 0, 0.5);
+    background: var(--accent);
+    color: #fff;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.18);
+    min-width: 4px;
+    transition: filter 120ms ease, box-shadow 120ms ease;
+}
+
+[data-design="premiere"] .premiere-tl-clip span {
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+    letter-spacing: -0.01em;
+}
+
+[data-design="premiere"] .premiere-tl-clip:hover {
+    filter: brightness(1.1);
+}
+
+[data-design="premiere"] .premiere-tl-clip.selected {
+    box-shadow: 0 0 0 2px var(--accent), 0 1px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.18);
+}
+
+[data-design="premiere"] .premiere-tl-clip.v2-clip {
+    background: linear-gradient(180deg, #9b6dff 0%, #5a3fc5 100%);
+    border-color: #2a1a78;
+}
+
+[data-design="premiere"] .premiere-tl-clip.v1-clip {
+    background: linear-gradient(180deg, #5b9bd5 0%, #2a6ba0 100%);
+    border-color: #1a4a78;
+    cursor: default;
+}
+
+[data-design="premiere"] .premiere-tl-clip.a1-clip {
+    background: linear-gradient(180deg, #5fc97e 0%, #2d7a45 100%);
+    border-color: #1a4a28;
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    cursor: default;
+}
+
+/* 플레이헤드 */
+[data-design="premiere"] .premiere-tl-playhead {
+    position: absolute;
+    top: 22px;
+    bottom: 0;
+    width: 1px;
+    background: #ff4444;
+    pointer-events: none;
+    z-index: 6;
+}
+
+[data-design="premiere"] .premiere-tl-playhead[hidden] {
+    display: none;
+}
+
+[data-design="premiere"] .premiere-tl-playhead-head {
+    position: absolute;
+    top: -16px;
+    left: -7px;
+    width: 14px;
+    height: 16px;
+    background: linear-gradient(180deg, #ff5555 0%, #b80000 100%);
+    clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+}
+
+/* 디테일 사이드 패널 */
+[data-design="premiere"] .premiere-tl-detail {
+    width: 280px;
+    flex-shrink: 0;
+    background: var(--panel);
+    border-left: 1px solid var(--border-strong);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+[data-design="premiere"] .premiere-tl-detail[hidden] {
+    display: none;
+}
+
+[data-design="premiere"] .premiere-tl-detail-header {
+    height: 26px;
+    background: var(--premiere-tab-bg);
+    border-bottom: 1px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    padding: 0 12px 0 12px;
+    gap: 8px;
+    box-shadow: inset 0 2px 0 var(--accent);
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-detail-title {
+    flex: 1;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--premiere-text-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-design="premiere"] .premiere-tl-detail-close {
+    background: transparent !important;
+    border: none !important;
+    color: var(--text-subtle) !important;
+    cursor: pointer;
+    padding: 0 6px !important;
+    height: 22px !important;
+    font-size: 14px !important;
+    box-shadow: none !important;
+    border-radius: 2px !important;
+    line-height: 1 !important;
+}
+
+[data-design="premiere"] .premiere-tl-detail-close:hover {
+    color: var(--accent) !important;
+    background: var(--accent-soft) !important;
+}
+
+[data-design="premiere"] .premiere-tl-detail-body {
+    flex: 1;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+[data-design="premiere"] .premiere-tl-detail-time {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--accent);
+    background: var(--premiere-bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    padding: 6px 10px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    align-self: flex-start;
+}
+
+[data-design="premiere"] .premiere-tl-detail-tag {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--accent);
+    font-size: 10px;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    padding: 2px 8px;
+    align-self: flex-start;
+    background: var(--accent-soft);
+}
+
+[data-design="premiere"] .premiere-tl-detail-tag[hidden] {
+    display: none;
+}
+
+[data-design="premiere"] .premiere-tl-detail-note {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.55;
+    white-space: pre-wrap;
+    margin: 0;
+}
+
+[data-design="premiere"] .premiere-tl-detail-actions {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border-strong);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    background: var(--bg-2);
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-detail-actions button {
+    height: 30px;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+@media (max-width: 1180px) {
+    [data-design="premiere"] .premiere-tl-detail {
+        width: 220px;
+    }
+}
+
+/* ─── Project · Loaded 패널 (fileInfoCard) 정리 ─── */
+[data-design="premiere"] #fileInfoCard .file-meta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+[data-design="premiere"] #fileInfoCard .file-actions {
+    display: flex;
+    gap: 6px;
+}
+
+[data-design="premiere"] #fileInfoCard .file-actions button {
+    flex: 1;
+    height: 30px;
+    font-size: 11px;
+}
+
+[data-design="premiere"] #fileInfoCard .file-label {
+    font-size: 9px;
+    letter-spacing: 0.16em;
+    color: var(--text-subtle);
+}
+
+[data-design="premiere"] #fileInfoCard .file-name {
+    font-size: 13px;
+    color: var(--premiere-text-strong);
+    word-break: break-all;
+}
+
+[data-design="premiere"] #fileInfoCard .file-size {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-subtle);
+}
