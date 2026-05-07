@@ -133,17 +133,9 @@ function buildPremiereTimelineDom() {
             <div class="premiere-tl-tracks-area">
                 <div class="premiere-tl-headers">
                     <div class="premiere-tl-header-spacer"></div>
-                    <div class="premiere-tl-track-header">V2</div>
-                    <div class="premiere-tl-track-header">V1</div>
-                    <div class="premiere-tl-track-header audio">A1</div>
-                    <div class="premiere-tl-track-header audio">A2</div>
                 </div>
                 <div class="premiere-tl-canvas">
                     <div class="premiere-tl-ruler"></div>
-                    <div class="premiere-tl-track v2"></div>
-                    <div class="premiere-tl-track v1"></div>
-                    <div class="premiere-tl-track a1 audio"></div>
-                    <div class="premiere-tl-track a2 audio"></div>
                     <div class="premiere-tl-playhead" hidden><div class="premiere-tl-playhead-head"></div></div>
                 </div>
             </div>
@@ -238,17 +230,17 @@ function renderPremiereTimeline() {
         fileLabel.textContent = parts.length ? parts.join(' · ') : fileLabel.dataset.empty;
     }
 
-    const ruler = view.querySelector('.premiere-tl-ruler');
+    const headersContainer = view.querySelector('.premiere-tl-headers');
+    headersContainer.querySelectorAll('.premiere-tl-track-header').forEach(h => h.remove());
+
+    const canvas = view.querySelector('.premiere-tl-canvas');
+    canvas.querySelectorAll('.premiere-tl-track').forEach(t => t.remove());
+
+    const ruler = canvas.querySelector('.premiere-tl-ruler');
+    const playhead = canvas.querySelector('.premiere-tl-playhead');
     ruler.innerHTML = '';
-    const v2 = view.querySelector('.premiere-tl-track.v2');
-    const v1 = view.querySelector('.premiere-tl-track.v1');
-    const a1 = view.querySelector('.premiere-tl-track.a1');
-    v2.innerHTML = '';
-    v1.innerHTML = '';
-    a1.innerHTML = '';
 
     if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
-        const playhead = view.querySelector('.premiere-tl-playhead');
         if (playhead) playhead.hidden = true;
         return;
     }
@@ -263,27 +255,41 @@ function renderPremiereTimeline() {
         ruler.appendChild(tick);
     }
 
+    const v1Header = document.createElement('div');
+    v1Header.className = 'premiere-tl-track-header';
+    v1Header.textContent = 'V1';
+    headersContainer.appendChild(v1Header);
+
+    const v1Track = document.createElement('div');
+    v1Track.className = 'premiere-tl-track v1';
+    canvas.insertBefore(v1Track, playhead);
+
     const v1Clip = document.createElement('div');
     v1Clip.className = 'premiere-tl-clip v1-clip';
     v1Clip.style.left = '0%';
     v1Clip.style.width = '100%';
     v1Clip.innerHTML = `<span>${selectedFileName ? selectedFileName : 'main video'}</span>`;
-    v1.appendChild(v1Clip);
+    v1Track.appendChild(v1Clip);
 
-    const a1Clip = document.createElement('div');
-    a1Clip.className = 'premiere-tl-clip a1-clip';
-    a1Clip.style.left = '0%';
-    a1Clip.style.width = '100%';
-    a1Clip.innerHTML = `<span>♪ audio</span>`;
-    a1.appendChild(a1Clip);
+    segments.forEach((seg, idx) => {
+        const memoIndex = idx + 1;
 
-    segments.forEach(seg => {
+        const header = document.createElement('div');
+        header.className = 'premiere-tl-track-header memo';
+        header.textContent = `M${memoIndex}`;
+        headersContainer.appendChild(header);
+
+        const track = document.createElement('div');
+        track.className = 'premiere-tl-track memo';
+        canvas.insertBefore(track, playhead);
+
         if (!Number.isFinite(seg.start) || !Number.isFinite(seg.end)) return;
         const startPct = Math.max(0, Math.min(100, (seg.start / totalDuration) * 100));
         const endPct = Math.max(0, Math.min(100, (seg.end / totalDuration) * 100));
         const widthPct = Math.max(0.5, endPct - startPct);
+
         const clip = document.createElement('div');
-        clip.className = 'premiere-tl-clip v2-clip';
+        clip.className = 'premiere-tl-clip memo-clip';
         clip.style.left = `${startPct}%`;
         clip.style.width = `${widthPct}%`;
         if (seg.color) {
@@ -292,14 +298,14 @@ function renderPremiereTimeline() {
         }
         clip.dataset.id = seg.id;
         clip.title = `${seg.title || '제목 없음'} (${formatTime(seg.start)} ~ ${formatTime(seg.end)})`;
-        clip.innerHTML = `<span>${seg.title || '제목 없음'}</span>`;
+        clip.innerHTML = `<span>M${memoIndex} · ${seg.title || '제목 없음'}</span>`;
         clip.addEventListener('click', (e) => {
             e.stopPropagation();
             view.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
             clip.classList.add('selected');
             openPremiereClipDetail(seg.id);
         });
-        v2.appendChild(clip);
+        track.appendChild(clip);
     });
 
     updatePremierePlayhead();
