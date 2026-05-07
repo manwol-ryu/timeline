@@ -1388,3 +1388,222 @@ textarea {
         font-size: 16px;
     }
 }
+
+/* ============================================================
+ * 프리미어 프로 디자인 (data-design="premiere")
+ *  - 라이트 팔레트가 기본, [data-theme="dark"]면 다크 팔레트
+ *  - 상단: 영상(좌) + 메모 입력(우)
+ *  - 하단: 영상 불러오기(좌) + 타임라인 영역(우), 1:4 비율
+ * ============================================================ */
+
+[data-design="premiere"] {
+    --bg-1: #d6d6d4;
+    --bg-2: #dedede;
+    --panel: #e8e8e6;
+    --panel-muted: #dedede;
+    --accent: #6d28d9;
+    --accent-strong: #7c3aed;
+    --accent-soft: rgba(109, 40, 217, 0.14);
+    --text: #1f1f1f;
+    --text-subtle: #5a5a5a;
+    --border: #a8a8a6;
+    --border-strong: #888;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    --premiere-bg-track: #c8c8c5;
+    --premiere-bg-input: #f5f5f3;
+    --premiere-text-strong: #0a0a0a;
+}
+
+[data-design="premiere"][data-theme="dark"] {
+    --bg-1: #1e1e1e;
+    --bg-2: #232323;
+    --panel: #2a2a2a;
+    --panel-muted: #232323;
+    --accent: #9b6dff;
+    --accent-strong: #b794ff;
+    --accent-soft: rgba(155, 109, 255, 0.16);
+    --text: #d4d4d4;
+    --text-subtle: #888;
+    --border: #161616;
+    --border-strong: #0a0a0a;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --premiere-bg-track: #1a1a1a;
+    --premiere-bg-input: #161616;
+    --premiere-text-strong: #f0f0f0;
+}
+
+[data-design="premiere"] body {
+    font-family: 'Inter', 'Noto Sans KR', 'Pretendard', system-ui, -apple-system, sans-serif;
+    background: var(--bg-1);
+}
+
+[data-design="premiere"] .app-shell {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 10px;
+    align-items: stretch;
+}
+
+[data-design="premiere"] .tab-controls {
+    display: none;
+}
+
+[data-design="premiere"] .workspace-panel {
+    display: flex;
+}
+
+[data-design="premiere"] .workspace-panels {
+    height: 100%;
+}
+
+.premiere-bottom-zone[hidden] {
+    display: none;
+}
+
+[data-design="premiere"] .premiere-bottom-zone {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
+    gap: 10px;
+    margin: 10px auto 0;
+    padding: 0 clamp(16px, 2vw, 32px);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+[data-design="premiere"] #premiereBottomZone > #uploadCard,
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard {
+    grid-column: 1;
+    grid-row: 1;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    align-self: start;
+}
+
+[data-design="premiere"] #premiereBottomZone > #timelinePanel {
+    grid-column: 2;
+    grid-row: 1;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 3px;
+    padding: 14px;
+}
+
+[data-design="premiere"] .panel,
+[data-design="premiere"] .file-info,
+[data-design="premiere"] .video-upload,
+[data-design="premiere"] .video-info,
+[data-design="premiere"] .segment-card,
+[data-design="premiere"] .search-row,
+[data-design="premiere"] .timeline-bar,
+[data-design="premiere"] .cache-info,
+[data-design="premiere"] .setting-row,
+[data-design="premiere"] .install-guide {
+    border-radius: 3px;
+}
+
+[data-design="premiere"] button {
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-muted) 100%);
+    border: 1px solid var(--border-strong);
+    color: var(--text);
+}
+
+[data-design="premiere"] button.primary {
+    background: linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+[data-design="premiere"] button.ghost {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-muted) 100%);
+    color: var(--text);
+}
+
+[data-design="premiere"] button:hover {
+    border-color: var(--accent);
+}
+
+[data-design="premiere"] input[type="text"],
+[data-design="premiere"] textarea,
+[data-design="premiere"] .select-input,
+[data-design="premiere"] select {
+    background: var(--premiere-bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+    color: var(--text);
+}
+
+[data-design="premiere"] input[type="text"]:focus,
+[data-design="premiere"] textarea:focus,
+[data-design="premiere"] select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+[data-design="premiere"] #startTime,
+[data-design="premiere"] #endTime {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    letter-spacing: 0.02em;
+}
+
+[data-design="premiere"] .time-badge {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--accent);
+    background: var(--premiere-bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+    letter-spacing: 0.04em;
+}
+
+[data-design="premiere"] .timeline-bar {
+    background: var(--premiere-bg-track);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+[data-design="premiere"] .timeline-marker {
+    border-radius: 2px;
+}
+
+[data-design="premiere"] .segment-time {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--accent);
+}
+
+[data-design="premiere"] .tag {
+    border-radius: 2px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    background: var(--accent-soft);
+}
+
+[data-design="premiere"] .video-frame {
+    border-radius: 3px;
+    border: 1px solid var(--border-strong);
+}
+
+[data-design="premiere"] .settings-button {
+    border-radius: 50%;
+    background: var(--panel);
+    border-color: var(--border-strong);
+    color: var(--accent);
+}
+
+@media (max-width: 1180px) {
+    [data-design="premiere"] .app-shell {
+        grid-template-columns: 1fr;
+    }
+    [data-design="premiere"] .premiere-bottom-zone {
+        grid-template-columns: 1fr;
+    }
+    [data-design="premiere"] #premiereBottomZone > #uploadCard,
+    [data-design="premiere"] #premiereBottomZone > #fileInfoCard,
+    [data-design="premiere"] #premiereBottomZone > #timelinePanel {
+        grid-column: 1;
+    }
+    [data-design="premiere"] #premiereBottomZone > #timelinePanel {
+        grid-row: auto;
+    }
+}
