@@ -1392,13 +1392,15 @@ textarea {
 /* ============================================================
  * 프리미어 프로 디자인 (data-design="premiere")
  *  - 라이트 팔레트가 기본, [data-theme="dark"]면 다크 팔레트
- *  - 상단: 영상(좌) + 메모 입력(우)
- *  - 하단: 영상 불러오기(좌) + 타임라인 영역(우), 1:4 비율
+ *  - 풀-블리드 패널 그리드 + 패널 chrome(탭 헤더)
+ *  - 상단: Source Monitor(좌) + Notes(우)
+ *  - 하단: Project(좌, 1) + Timeline(우, 4)
+ *  - 최하단: 상태 바
  * ============================================================ */
 
 [data-design="premiere"] {
     --bg-1: #d6d6d4;
-    --bg-2: #dedede;
+    --bg-2: #cfcfcd;
     --panel: #e8e8e6;
     --panel-muted: #dedede;
     --accent: #6d28d9;
@@ -1410,8 +1412,12 @@ textarea {
     --border-strong: #888;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     --premiere-bg-track: #c8c8c5;
+    --premiere-bg-row-alt: #d4d4d1;
     --premiere-bg-input: #f5f5f3;
     --premiere-text-strong: #0a0a0a;
+    --premiere-tab-bg: linear-gradient(180deg, #d4d4d2 0%, #c4c4c2 100%);
+    --premiere-toolbar-bg: linear-gradient(180deg, #cfcfcd 0%, #c4c4c2 100%);
+    --premiere-monitor-bg: #1a1a1a;
 }
 
 [data-design="premiere"][data-theme="dark"] {
@@ -1428,77 +1434,348 @@ textarea {
     --border-strong: #0a0a0a;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     --premiere-bg-track: #1a1a1a;
+    --premiere-bg-row-alt: #232323;
     --premiere-bg-input: #161616;
     --premiere-text-strong: #f0f0f0;
+    --premiere-tab-bg: linear-gradient(180deg, #2a2a2a 0%, #232323 100%);
+    --premiere-toolbar-bg: linear-gradient(180deg, #2c2c2c 0%, #242424 100%);
+    --premiere-monitor-bg: #0a0a0a;
 }
 
+/* ─── Body: 풀-블리드, 플렉스 컬럼, 상태바 자리 확보 ─── */
 [data-design="premiere"] body {
+    margin: 0;
+    padding: 0 0 22px 0;
     font-family: 'Inter', 'Noto Sans KR', 'Pretendard', system-ui, -apple-system, sans-serif;
     background: var(--bg-1);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
+/* ─── App shell: 상단 영상+메모, 1px 갭으로 패널 라인 효과 ─── */
 [data-design="premiere"] .app-shell {
-    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-    gap: 10px;
+    flex: 1.55 1 0;
+    margin: 0;
+    max-width: none;
+    width: 100%;
+    height: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    grid-template-rows: 1fr;
     align-items: stretch;
+    gap: 1px;
+    padding: 0;
+    background: var(--border-strong);
 }
 
+[data-design="premiere"] .video-stage,
+[data-design="premiere"] .workspace {
+    height: auto;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: var(--panel);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+[data-design="premiere"] .video-stage {
+    align-items: stretch;
+    justify-content: stretch;
+}
+
+/* ─── 워크스페이스: 탭 숨김, editorPanel만 표시 ─── */
 [data-design="premiere"] .tab-controls {
     display: none;
 }
-
+[data-design="premiere"] .workspace-panels {
+    flex: 1;
+    height: auto;
+    overflow: hidden;
+}
 [data-design="premiere"] .workspace-panel {
     display: flex;
-}
-
-[data-design="premiere"] .workspace-panels {
+    flex-direction: column;
     height: 100%;
+    overflow-y: auto;
+    padding: 12px 14px;
+    gap: 12px;
+    border-radius: 0;
 }
 
-.premiere-bottom-zone[hidden] {
+/* ─── 패널 헤더(::before 가짜 탭 스트립) ─── */
+[data-design="premiere"] .video-panel,
+[data-design="premiere"] #editorPanel,
+[data-design="premiere"] #premiereBottomZone > #uploadCard,
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard,
+[data-design="premiere"] #premiereBottomZone > #timelinePanel {
+    position: relative;
+    padding-top: 28px;
+    background: var(--panel);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+[data-design="premiere"] .video-panel::before,
+[data-design="premiere"] #editorPanel::before,
+[data-design="premiere"] #premiereBottomZone > #uploadCard::before,
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard::before,
+[data-design="premiere"] #premiereBottomZone > #timelinePanel::before {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-family: 'Inter', 'Noto Sans KR', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--premiere-text-strong);
+    background: var(--premiere-tab-bg);
+    border-bottom: 1px solid var(--border-strong);
+    box-shadow: inset 0 2px 0 var(--accent);
+    z-index: 1;
+    pointer-events: none;
+}
+
+[data-design="premiere"] .video-panel::before { content: '▶ Source Monitor'; }
+[data-design="premiere"] #editorPanel::before { content: '✎ Notes'; }
+[data-design="premiere"] #premiereBottomZone > #uploadCard::before { content: '📁 Project'; }
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard::before { content: '📁 Project · Loaded'; }
+[data-design="premiere"] #premiereBottomZone > #timelinePanel::before { content: '⏱ Timeline'; }
+
+/* ─── 비디오 패널 본문: 소스 모니터 룩 ─── */
+[data-design="premiere"] .video-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 28px 0 0 0;
+    background: var(--premiere-monitor-bg);
+}
+
+[data-design="premiere"] .video-panel > * {
+    width: 100%;
+}
+
+[data-design="premiere"] .video-frame {
+    flex: 1;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+    background: var(--premiere-monitor-bg);
+    aspect-ratio: auto;
+    margin: 0;
+    padding: 0;
+}
+
+[data-design="premiere"] .video-frame video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    background: #000;
+}
+
+/* 비디오 패널 안의 quick-buttons (현재 장면 메모 추가) — Premiere 트랜스포트 바 자리 */
+[data-design="premiere"] .video-panel > .quick-buttons {
+    margin: 0;
+    padding: 6px 10px;
+    background: var(--premiere-toolbar-bg);
+    border-top: 1px solid var(--border-strong);
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+
+/* 컴팩트 인라인 타임라인 — 프리미어 모드에선 큰 타임라인이 하단으로 옮겨가므로 숨김 */
+[data-design="premiere"] .video-panel > .inline-timeline {
     display: none;
 }
 
+/* ─── Notes 패널(메모 입력) 본문 ─── */
+[data-design="premiere"] #editorPanel {
+    padding: 28px 14px 12px 14px;
+    background: var(--panel);
+    gap: 10px;
+    flex: 1;
+}
+
+[data-design="premiere"] #editorPanel label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--text-subtle);
+}
+
+[data-design="premiere"] #editorPanel .video-info {
+    background: var(--premiere-bg-track);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    padding: 8px 10px;
+}
+
+[data-design="premiere"] #editorPanel .form-grid {
+    gap: 8px;
+}
+
+/* ─── 하단 영역: Project(1) + Timeline(4), 1px 갭 ─── */
+.premiere-bottom-zone[hidden] { display: none; }
 [data-design="premiere"] .premiere-bottom-zone {
+    flex: 1 1 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
-    gap: 10px;
-    margin: 10px auto 0;
-    padding: 0 clamp(16px, 2vw, 32px);
+    grid-template-rows: 1fr;
+    gap: 1px;
+    margin: 0;
+    padding: 0;
     width: 100%;
-    box-sizing: border-box;
+    background: var(--border-strong);
+    overflow: hidden;
 }
 
 [data-design="premiere"] #premiereBottomZone > #uploadCard,
 [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
     grid-column: 1;
     grid-row: 1;
+    align-self: stretch;
+    margin: 0;
+    border: none;
+    border-radius: 0;
     background: var(--panel);
-    border: 1px solid var(--border-strong);
-    border-radius: 3px;
-    align-self: start;
+    overflow-y: auto;
+    padding: 36px 14px 14px 14px;
 }
 
+/* Timeline 패널: 멀티트랙 룩 */
 [data-design="premiere"] #premiereBottomZone > #timelinePanel {
     grid-column: 2;
     grid-row: 1;
+    margin: 0;
+    border: none;
+    border-radius: 0;
     background: var(--panel);
-    border: 1px solid var(--border-strong);
-    border-radius: 3px;
-    padding: 14px;
+    padding: 28px 0 0 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
+/* Timeline 패널 내부 첫 번째 div(레이블+타임라인 바) — 룰러 영역으로 변신 */
+[data-design="premiere"] #timelinePanel > div:first-child {
+    background: var(--premiere-toolbar-bg);
+    border-bottom: 1px solid var(--border-strong);
+    padding: 4px 8px;
+    flex-shrink: 0;
+    margin: 0;
+}
+
+[data-design="premiere"] #timelinePanel > div:first-child label {
+    display: none;
+}
+
+[data-design="premiere"] #timelinePanel .timeline-bar {
+    height: 24px;
+    background:
+        repeating-linear-gradient(
+            90deg,
+            transparent 0,
+            transparent calc(10% - 1px),
+            var(--text-subtle) calc(10% - 1px),
+            var(--text-subtle) 10%
+        ),
+        var(--premiere-bg-track);
+    border: 1px solid var(--border-strong);
+    border-radius: 2px;
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+    position: relative;
+    margin: 0;
+}
+
+/* 타임라인 마커 = Premiere 클립 칩 */
+[data-design="premiere"] .timeline-marker {
+    border-radius: 1px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+    border: 1px solid rgba(0,0,0,0.5);
+    top: 2px !important;
+    bottom: 2px !important;
+    height: auto !important;
+}
+
+/* 검색 행 — Premiere 툴바 스타일 */
+[data-design="premiere"] #timelinePanel .search-row {
+    background: var(--premiere-toolbar-bg);
+    border-top: 1px solid var(--border-strong);
+    border-bottom: 1px solid var(--border-strong);
+    padding: 6px 8px;
+    margin: 0;
+    border-radius: 0;
+    flex-shrink: 0;
+    gap: 4px;
+}
+
+[data-design="premiere"] #timelinePanel .search-row input[type="text"] {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* 세그먼트 리스트 = 트랙 영역 */
+[data-design="premiere"] #timelinePanel .segments-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+    margin: 0;
+    gap: 0;
+    background: var(--premiere-bg-track);
+}
+
+/* 각 세그먼트 카드 = Premiere 클립 행 */
+[data-design="premiere"] .segment-card {
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    background: var(--premiere-bg-row-alt);
+    padding: 8px 12px;
+    margin: 0;
+    box-shadow: none;
+}
+
+[data-design="premiere"] .segment-card:nth-child(even) {
+    background: var(--premiere-bg-track);
+}
+
+[data-design="premiere"] .segment-card:hover {
+    background: var(--accent-soft);
+}
+
+[data-design="premiere"] .segment-time {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    color: var(--accent);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
+/* ─── 글로벌 컴포넌트 재스타일 ─── */
 [data-design="premiere"] .panel,
 [data-design="premiere"] .file-info,
 [data-design="premiere"] .video-upload,
 [data-design="premiere"] .video-info,
-[data-design="premiere"] .segment-card,
 [data-design="premiere"] .search-row,
-[data-design="premiere"] .timeline-bar,
 [data-design="premiere"] .cache-info,
 [data-design="premiere"] .setting-row,
 [data-design="premiere"] .install-guide {
-    border-radius: 3px;
+    border-radius: 2px;
 }
 
 [data-design="premiere"] button {
@@ -1506,12 +1783,18 @@ textarea {
     background: linear-gradient(180deg, var(--panel) 0%, var(--panel-muted) 100%);
     border: 1px solid var(--border-strong);
     color: var(--text);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
+    font-weight: 500;
+}
+[data-design="premiere"][data-theme="dark"] button {
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;
 }
 
 [data-design="premiere"] button.primary {
     background: linear-gradient(180deg, var(--accent-strong) 0%, var(--accent) 100%);
     color: #fff;
     border-color: var(--accent);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.18) inset, 0 1px 2px rgba(0,0,0,0.2);
 }
 
 [data-design="premiere"] button.ghost {
@@ -1519,8 +1802,15 @@ textarea {
     color: var(--text);
 }
 
+[data-design="premiere"] button.danger {
+    background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+    color: #fff;
+    border-color: #7f1d1d;
+}
+
 [data-design="premiere"] button:hover {
     border-color: var(--accent);
+    filter: brightness(1.04);
 }
 
 [data-design="premiere"] input[type="text"],
@@ -1532,6 +1822,7 @@ textarea {
     border-radius: 2px;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
     color: var(--text);
+    font-family: inherit;
 }
 
 [data-design="premiere"] input[type="text"]:focus,
@@ -1555,21 +1846,7 @@ textarea {
     border-radius: 2px;
     box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
     letter-spacing: 0.04em;
-}
-
-[data-design="premiere"] .timeline-bar {
-    background: var(--premiere-bg-track);
-    border-radius: 2px;
-    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
-}
-
-[data-design="premiere"] .timeline-marker {
-    border-radius: 2px;
-}
-
-[data-design="premiere"] .segment-time {
-    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
-    color: var(--accent);
+    font-weight: 500;
 }
 
 [data-design="premiere"] .tag {
@@ -1577,33 +1854,66 @@ textarea {
     border: 1px solid var(--accent);
     color: var(--accent);
     background: var(--accent-soft);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
 }
 
-[data-design="premiere"] .video-frame {
-    border-radius: 3px;
-    border: 1px solid var(--border-strong);
-}
-
+/* 설정 버튼 (기어 아이콘) */
 [data-design="premiere"] .settings-button {
     border-radius: 50%;
     background: var(--panel);
-    border-color: var(--border-strong);
+    border: 1px solid var(--border-strong);
     color: var(--accent);
+    box-shadow: var(--shadow);
 }
 
+/* ─── 상태 바 (html::after 고정) ─── */
+[data-design="premiere"] body::after {
+    content: '● Saved · Premiere Pro Theme · Editing Workspace';
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    background: var(--premiere-toolbar-bg);
+    border-top: 1px solid var(--border-strong);
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 10px;
+    color: var(--text-subtle);
+    letter-spacing: 0.04em;
+    z-index: 50;
+    pointer-events: none;
+}
+
+/* ─── 모바일/좁은 뷰포트 대응 ─── */
 @media (max-width: 1180px) {
+    [data-design="premiere"] body {
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+    }
     [data-design="premiere"] .app-shell {
         grid-template-columns: 1fr;
+        grid-auto-rows: auto;
+        flex: none;
     }
     [data-design="premiere"] .premiere-bottom-zone {
         grid-template-columns: 1fr;
+        grid-auto-rows: auto;
+        flex: none;
     }
     [data-design="premiere"] #premiereBottomZone > #uploadCard,
     [data-design="premiere"] #premiereBottomZone > #fileInfoCard,
     [data-design="premiere"] #premiereBottomZone > #timelinePanel {
         grid-column: 1;
-    }
-    [data-design="premiere"] #premiereBottomZone > #timelinePanel {
         grid-row: auto;
+    }
+    [data-design="premiere"] .video-panel,
+    [data-design="premiere"] #editorPanel,
+    [data-design="premiere"] #premiereBottomZone > #timelinePanel {
+        min-height: 360px;
     }
 }
