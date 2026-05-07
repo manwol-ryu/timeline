@@ -1655,6 +1655,21 @@ textarea {
     background: var(--panel);
     overflow-y: auto;
     padding: 36px 14px 14px 14px;
+    text-align: center;
+}
+
+[data-design="premiere"] #premiereBottomZone > #uploadCard:not([style*="display: none"]) {
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
 }
 
 /* Timeline 패널: 멀티트랙 룩 */
@@ -1994,14 +2009,18 @@ textarea {
     overflow: hidden;
 }
 
+/* 트랙 영역 = 단일 스크롤 컨텍스트 (헤더 sticky-left, 룰러 sticky-top) */
 [data-design="premiere"] .premiere-tl-tracks-area {
     flex: 1;
     display: flex;
     min-width: 0;
-    overflow: hidden;
+    min-height: 0;
+    overflow: auto;
+    background: var(--premiere-bg-track);
+    align-items: flex-start;
 }
 
-/* 트랙 헤더 (V2 V1 A1 A2) */
+/* 트랙 헤더 컬럼 (V1 + M1, M2, M3 ...) — sticky-left */
 [data-design="premiere"] .premiere-tl-headers {
     width: 52px;
     flex-shrink: 0;
@@ -2009,6 +2028,10 @@ textarea {
     border-right: 1px solid var(--border-strong);
     display: flex;
     flex-direction: column;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    align-self: stretch;
 }
 
 [data-design="premiere"] .premiere-tl-header-spacer {
@@ -2016,6 +2039,9 @@ textarea {
     background: var(--premiere-toolbar-bg);
     border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 7;
 }
 
 [data-design="premiere"] .premiere-tl-track-header {
@@ -2029,32 +2055,30 @@ textarea {
     font-weight: 600;
     color: var(--text);
     background: var(--premiere-bg-row-alt);
+    flex-shrink: 0;
 }
 
-[data-design="premiere"] .premiere-tl-track-header.audio {
-    background: rgba(40, 80, 60, 0.18);
+[data-design="premiere"] .premiere-tl-track-header.memo {
+    color: var(--accent);
 }
 
-[data-design="premiere"][data-theme="dark"] .premiere-tl-track-header.audio {
-    background: rgba(60, 120, 90, 0.14);
-}
-
-/* 트랙 캔버스 (룰러 + 트랙들) */
+/* 트랙 캔버스 (룰러 + 트랙들) — 스크롤은 부모가 담당 */
 [data-design="premiere"] .premiere-tl-canvas {
     flex: 1;
     position: relative;
-    overflow-x: auto;
-    overflow-y: hidden;
     background: var(--premiere-bg-track);
     min-width: 0;
+    align-self: stretch;
     display: flex;
     flex-direction: column;
 }
 
-/* 룰러 (시간 눈금) */
+/* 룰러 (시간 눈금) — sticky top */
 [data-design="premiere"] .premiere-tl-ruler {
     height: 22px;
-    position: relative;
+    position: sticky;
+    top: 0;
+    z-index: 4;
     background: var(--premiere-toolbar-bg);
     border-bottom: 1px solid var(--border-strong);
     flex-shrink: 0;
@@ -2095,12 +2119,8 @@ textarea {
     background: var(--premiere-bg-track);
 }
 
-[data-design="premiere"] .premiere-tl-track.audio {
-    background: rgba(40, 80, 60, 0.10);
-}
-
-[data-design="premiere"][data-theme="dark"] .premiere-tl-track.audio {
-    background: rgba(60, 120, 90, 0.10);
+[data-design="premiere"] .premiere-tl-track.memo {
+    background: var(--premiere-bg-row-alt);
 }
 
 /* 클립 */
@@ -2140,7 +2160,7 @@ textarea {
     box-shadow: 0 0 0 2px var(--accent), 0 1px 0 rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.18);
 }
 
-[data-design="premiere"] .premiere-tl-clip.v2-clip {
+[data-design="premiere"] .premiere-tl-clip.memo-clip {
     background: linear-gradient(180deg, #9b6dff 0%, #5a3fc5 100%);
     border-color: #2a1a78;
 }
@@ -2148,13 +2168,6 @@ textarea {
 [data-design="premiere"] .premiere-tl-clip.v1-clip {
     background: linear-gradient(180deg, #5b9bd5 0%, #2a6ba0 100%);
     border-color: #1a4a78;
-    cursor: default;
-}
-
-[data-design="premiere"] .premiere-tl-clip.a1-clip {
-    background: linear-gradient(180deg, #5fc97e 0%, #2d7a45 100%);
-    border-color: #1a4a28;
-    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
     cursor: default;
 }
 
@@ -2307,20 +2320,26 @@ textarea {
     }
 }
 
-/* ─── Project · Loaded 패널 (fileInfoCard) 정리 ─── */
+/* ─── Project · Loaded 패널 (fileInfoCard) 정리 — 중앙 정렬 ─── */
 [data-design="premiere"] #fileInfoCard .file-meta {
     flex-direction: column;
-    align-items: stretch;
+    align-items: center;
     gap: 8px;
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
 }
 
 [data-design="premiere"] #fileInfoCard .file-actions {
     display: flex;
     gap: 6px;
+    justify-content: center;
+    width: 100%;
 }
 
 [data-design="premiere"] #fileInfoCard .file-actions button {
     flex: 1;
+    max-width: 120px;
     height: 30px;
     font-size: 11px;
 }
@@ -2329,16 +2348,30 @@ textarea {
     font-size: 9px;
     letter-spacing: 0.16em;
     color: var(--text-subtle);
+    text-align: center;
 }
 
 [data-design="premiere"] #fileInfoCard .file-name {
     font-size: 13px;
     color: var(--premiere-text-strong);
     word-break: break-all;
+    text-align: center;
 }
 
 [data-design="premiere"] #fileInfoCard .file-size {
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
     font-size: 11px;
     color: var(--text-subtle);
+    text-align: center;
+}
+
+/* uploadCard inner 요소 중앙 정렬 */
+[data-design="premiere"] #uploadCard strong,
+[data-design="premiere"] #uploadCard p {
+    text-align: center;
+    width: 100%;
+}
+
+[data-design="premiere"] #uploadCard input[type="file"] {
+    margin: 0 auto;
 }
