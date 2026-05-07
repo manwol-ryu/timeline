@@ -59,7 +59,9 @@ const FULLSCREEN_MODE_DEFAULT = 'expand';
 const STORAGE_PWA_HINT = 'timeline_pwa_hint';
 const STORAGE_DESIGN = 'timeline_design';
 const DESIGN_DEFAULT = 'default';
-const VALID_DESIGNS = ['default', 'ipad'];
+const VALID_DESIGNS = ['default', 'ipad', 'premiere'];
+
+let _premiereOriginalParents = null;
 
 function getDesign() {
     const stored = localStorage.getItem(STORAGE_DESIGN);
@@ -74,10 +76,38 @@ function setDesign(design) {
 
 function applyDesign() {
     const design = getDesign();
+    const html = document.documentElement;
+    const prev = html.getAttribute('data-design');
+
+    if (prev === 'premiere' && design !== 'premiere' && _premiereOriginalParents) {
+        for (const { node, parent, nextSibling } of _premiereOriginalParents) {
+            parent.insertBefore(node, nextSibling);
+        }
+        _premiereOriginalParents = null;
+    }
+
     if (design === DESIGN_DEFAULT) {
-        document.documentElement.removeAttribute('data-design');
+        html.removeAttribute('data-design');
     } else {
-        document.documentElement.setAttribute('data-design', design);
+        html.setAttribute('data-design', design);
+    }
+
+    const zone = document.getElementById('premiereBottomZone');
+    if (design === 'premiere' && zone && !_premiereOriginalParents) {
+        zone.hidden = false;
+        const movers = [
+            document.getElementById('uploadCard'),
+            document.getElementById('fileInfoCard'),
+            document.getElementById('timelinePanel'),
+        ].filter(Boolean);
+        _premiereOriginalParents = movers.map(node => ({
+            node,
+            parent: node.parentNode,
+            nextSibling: node.nextSibling,
+        }));
+        movers.forEach(node => zone.appendChild(node));
+    } else if (design !== 'premiere' && zone) {
+        zone.hidden = true;
     }
 }
 
