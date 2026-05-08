@@ -438,6 +438,8 @@ body.is-video-expanded {
     flex-direction: column;
     gap: 6px;
     padding: 8px 0 0 0;
+    width: 100%;
+    align-self: stretch;
 }
 
 .video-loading-progress-bar {
@@ -474,6 +476,12 @@ body.is-video-expanded {
     font-size: 0.78rem;
     color: var(--text-subtle);
     font-variant-numeric: tabular-nums;
+    gap: 8px;
+    width: 100%;
+}
+
+.video-loading-progress-meta > span {
+    flex: 0 0 auto;
 }
 
 .file-thumbnail-wrap {
@@ -2381,17 +2389,22 @@ body.is-resizing .panel-resizer {
     background: linear-gradient(180deg, #5b9bd5 0%, #2a6ba0 100%);
     border-color: #1a4a78;
     cursor: default;
+    pointer-events: none;
 }
 
 /* 플레이헤드 */
 [data-design="premiere"] .premiere-tl-playhead {
     position: absolute;
-    top: 22px;
+    top: 0;
     bottom: 0;
     width: 1px;
     background: #ff4444;
     pointer-events: none;
     z-index: 6;
+}
+
+[data-design="premiere"] .premiere-tl-playhead.is-scrubbing {
+    background: #ff8888;
 }
 
 [data-design="premiere"] .premiere-tl-playhead[hidden] {
@@ -2400,13 +2413,34 @@ body.is-resizing .panel-resizer {
 
 [data-design="premiere"] .premiere-tl-playhead-head {
     position: absolute;
-    top: -16px;
+    top: 0;
     left: -7px;
     width: 14px;
     height: 16px;
     background: linear-gradient(180deg, #ff5555 0%, #b80000 100%);
     clip-path: polygon(0 0, 100% 0, 100% 60%, 50% 100%, 0 60%);
     box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    pointer-events: auto;
+    cursor: ew-resize;
+    z-index: 7;
+}
+
+[data-design="premiere"] .premiere-tl-playhead-head:hover {
+    filter: brightness(1.2);
+}
+
+/* 룰러는 인터랙티브: 클릭/드래그로 시킹 */
+[data-design="premiere"] .premiere-tl-ruler {
+    cursor: pointer;
+}
+
+[data-design="premiere"] .premiere-tl-ruler.is-scrubbing {
+    cursor: ew-resize;
+}
+
+/* 캔버스 빈 영역 클릭 시킹 */
+[data-design="premiere"] .premiere-tl-track {
+    cursor: text;
 }
 
 /* 디테일 사이드 패널 */
@@ -2533,6 +2567,10 @@ body.is-resizing .panel-resizer {
 }
 
 /* ─── Project · Loaded 패널 (fileInfoCard) 정리 — 중앙 정렬 ─── */
+[data-design="premiere"] #fileInfoCard {
+    gap: 10px;
+}
+
 [data-design="premiere"] #fileInfoCard .file-meta {
     flex-direction: column;
     align-items: center;
@@ -2540,6 +2578,29 @@ body.is-resizing .panel-resizer {
     width: 100%;
     max-width: 280px;
     margin: 0 auto;
+}
+
+[data-design="premiere"] #fileInfoCard .file-thumbnail-wrap {
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] #fileInfoCard .video-loading-progress {
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+    flex-shrink: 0;
+}
+
+[data-design="premiere"] #fileInfoCard #videoLoadingStatus,
+[data-design="premiere"] #fileInfoCard #convertStatus {
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+    text-align: center;
 }
 
 [data-design="premiere"] #fileInfoCard .file-actions {

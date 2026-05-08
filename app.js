@@ -223,8 +223,9 @@ function buildPremiereTimelineDom() {
     const zoomLevel = view.querySelector('.premiere-tl-zoom-level');
 
     function applyZoomFromSlider(val) {
-        // 0~100 슬라이더를 로그 스케일로 PX_PER_SEC로 변환
-        const min = Math.log(PREMIERE_TIMELINE_ZOOM_MIN);
+        // 0~100 슬라이더를 로그 스케일로 PX_PER_SEC로 변환 (min은 동적으로 fit-to-view)
+        const minZoom = getEffectiveMinZoom();
+        const min = Math.log(minZoom);
         const max = Math.log(PREMIERE_TIMELINE_ZOOM_MAX);
         const t = Math.max(0, Math.min(100, Number(val))) / 100;
         premiereTimelineZoom = Math.exp(min + (max - min) * t);
@@ -233,7 +234,8 @@ function buildPremiereTimelineDom() {
     }
 
     function setZoomSliderFromValue() {
-        const min = Math.log(PREMIERE_TIMELINE_ZOOM_MIN);
+        const minZoom = getEffectiveMinZoom();
+        const min = Math.log(minZoom);
         const max = Math.log(PREMIERE_TIMELINE_ZOOM_MAX);
         const t = (Math.log(premiereTimelineZoom) - min) / (max - min);
         zoomSlider.value = String(Math.max(0, Math.min(100, t * 100)));
@@ -244,17 +246,13 @@ function buildPremiereTimelineDom() {
     view.querySelectorAll('.premiere-tl-zoom-btn').forEach(btn => {
         btn.addEventListener('click', () => {
             const action = btn.dataset.zoom;
+            const minZoom = getEffectiveMinZoom();
             if (action === 'in') {
                 premiereTimelineZoom = Math.min(PREMIERE_TIMELINE_ZOOM_MAX, premiereTimelineZoom * 1.5);
             } else if (action === 'out') {
-                premiereTimelineZoom = Math.max(PREMIERE_TIMELINE_ZOOM_MIN, premiereTimelineZoom / 1.5);
+                premiereTimelineZoom = Math.max(minZoom, premiereTimelineZoom / 1.5);
             } else if (action === 'fit') {
-                const tracksArea = view.querySelector('.premiere-tl-tracks-area');
-                const headerW = view.querySelector('.premiere-tl-headers')?.offsetWidth || 52;
-                const availW = Math.max(200, (tracksArea?.clientWidth || 800) - headerW - 8);
-                if (totalDuration > 0) {
-                    premiereTimelineZoom = Math.max(PREMIERE_TIMELINE_ZOOM_MIN, Math.min(PREMIERE_TIMELINE_ZOOM_MAX, availW / totalDuration));
-                }
+                premiereTimelineZoom = minZoom;
             }
             setZoomSliderFromValue();
             zoomLevel.textContent = `${premiereTimelineZoom.toFixed(1)} px/s`;
@@ -262,7 +260,13 @@ function buildPremiereTimelineDom() {
         });
     });
 
+    // 노출 가능: 외부에서도 슬라이더를 동기화하기 위해 view에 메서드 보관
+    view._setZoomSliderFromValue = setZoomSliderFromValue;
+
     setZoomSliderFromValue();
+
+    attachTimelineScrubHandlers(view);
+    attachTimelineWheelZoom(view);
 
     const detail = view.querySelector('.premiere-tl-detail');
     view.querySelector('.premiere-tl-detail-close').addEventListener('click', () => {
@@ -541,6 +545,143 @@ function updatePremierePlayhead() {
     const pxPerSec = getTimelinePixelsPerSecond();
     const px = Math.max(0, (video.currentTime || 0) * pxPerSec);
     playhead.style.left = `${px}px`;
+}
+
+function attachTimelineScrubHandlers(view) {
+    const ruler = view.querySelector('.premiere-tl-ruler');
+    const canvas = view.querySelector('.premiere-tl-canvas');
+    const playhead = view.querySelector('.premiere-tl-playhead');
+    const playheadHead = view.querySelector('.premiere-tl-playhead-head');
+
+    function seekFromClientX(clientX) {
+        const pxPerSec = getTimelinePixelsPerSecond();
+        if (!pxPerSec || !Number.isFinite(totalDuration) || totalDuration <= 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const localX = clientX - rect.left;
+        const t = Math.max(0, Math.min(totalDuration, localX / pxPerSec));
+        if (Number.isFinite(t)) {
+            video.currentTime = t;
+            updatePremierePlayhead();
+        }
+    }
+
+    function makeScrubHandler(target) {
+        let scrubbing = false;
+        let wasPlaying = false;
+
+        target.addEventListener('pointerdown', (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            // 클립 위에서는 시킹 비활성화 (클립 드래그가 우선)
+            if (e.target.closest('.premiere-tl-clip')) return;
+            scrubbing = true;
+            wasPlaying = !video.paused;
+            if (wasPlaying) video.pause();
+            target.setPointerCapture?.(e.pointerId);
+            ruler?.classList.add('is-scrubbing');
+            playhead?.classList.add('is-scrubbing');
+            seekFromClientX(e.clientX);
+            e.preventDefault();
+        });
+
+        target.addEventListener('pointermove', (e) => {
+            if (!scrubbing) return;
+            seekFromClientX(e.clientX);
+        });
+
+        function endScrub(e) {
+            if (!scrubbing) return;
+            scrubbing = false;
+            target.releasePointerCapture?.(e.pointerId);
+            ruler?.classList.remove('is-scrubbing');
+            playhead?.classList.remove('is-scrubbing');
+            if (wasPlaying) video.play().catch(() => {});
+        }
+        target.addEventListener('pointerup', endScrub);
+        target.addEventListener('pointercancel', endScrub);
+    }
+
+    // 룰러는 canvas의 자식이므로 canvas에만 핸들러를 달면 충분 (이벤트 버블링)
+    if (canvas) makeScrubHandler(canvas);
+
+    // playhead head의 별도 드래그 핸들러
+    if (playheadHead) {
+        let dragging = false;
+        let wasPlaying = false;
+        playheadHead.addEventListener('pointerdown', (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            dragging = true;
+            wasPlaying = !video.paused;
+            if (wasPlaying) video.pause();
+            playheadHead.setPointerCapture?.(e.pointerId);
+            playhead?.classList.add('is-scrubbing');
+            e.stopPropagation();
+            e.preventDefault();
+        });
+        playheadHead.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            seekFromClientX(e.clientX);
+        });
+        function endHeadDrag(e) {
+            if (!dragging) return;
+            dragging = false;
+            playheadHead.releasePointerCapture?.(e.pointerId);
+            playhead?.classList.remove('is-scrubbing');
+            if (wasPlaying) video.play().catch(() => {});
+        }
+        playheadHead.addEventListener('pointerup', endHeadDrag);
+        playheadHead.addEventListener('pointercancel', endHeadDrag);
+    }
+}
+
+function attachTimelineWheelZoom(view) {
+    const tracksArea = view.querySelector('.premiere-tl-tracks-area');
+    if (!tracksArea) return;
+
+    tracksArea.addEventListener('wheel', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        e.preventDefault();
+        const factor = e.deltaY < 0 ? 1.2 : (1 / 1.2);
+
+        // 마우스 위치를 기준으로 줌 (해당 위치의 시간이 그대로 유지되도록 스크롤 조정)
+        const rect = tracksArea.getBoundingClientRect();
+        const headerW = view.querySelector('.premiere-tl-headers')?.offsetWidth || 0;
+        const localX = e.clientX - rect.left - headerW + tracksArea.scrollLeft;
+        const oldPxPerSec = getTimelinePixelsPerSecond() || premiereTimelineZoom;
+        const focusTime = oldPxPerSec > 0 ? localX / oldPxPerSec : 0;
+
+        const minZoom = getEffectiveMinZoom();
+        const maxZoom = PREMIERE_TIMELINE_ZOOM_MAX;
+        premiereTimelineZoom = Math.max(minZoom, Math.min(maxZoom, premiereTimelineZoom * factor));
+
+        renderPremiereTimeline();
+
+        const newPxPerSec = getTimelinePixelsPerSecond();
+        const newLocalX = focusTime * newPxPerSec;
+        tracksArea.scrollLeft = newLocalX - (e.clientX - rect.left - headerW);
+    }, { passive: false });
+}
+
+function autoFitPremiereTimeline() {
+    const view = document.getElementById('premiereTimelineView');
+    if (!view || !isPremiereDesign() || totalDuration <= 0) return;
+    // 현재 줌이 effective min보다 작으면 fit으로 설정
+    const minZoom = getEffectiveMinZoom();
+    if (premiereTimelineZoom < minZoom * 1.001 || premiereTimelineZoom < 1) {
+        premiereTimelineZoom = minZoom;
+        if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+    }
+}
+
+function getEffectiveMinZoom() {
+    const view = document.getElementById('premiereTimelineView');
+    if (!view || !Number.isFinite(totalDuration) || totalDuration <= 0) {
+        return PREMIERE_TIMELINE_ZOOM_MIN;
+    }
+    const tracksArea = view.querySelector('.premiere-tl-tracks-area');
+    const headers = view.querySelector('.premiere-tl-headers');
+    if (!tracksArea || !headers) return PREMIERE_TIMELINE_ZOOM_MIN;
+    const availW = Math.max(100, tracksArea.clientWidth - headers.offsetWidth - 8);
+    return Math.max(0.01, availW / totalDuration);
 }
 
 function attachClipDragHandlers(clip, seg) {
@@ -1445,6 +1586,73 @@ function loadDarkMode() {
     }
 }
 
+// MP4 파일의 첫 부분을 읽어 moov atom이 앞쪽에 있는지(faststart) 확인.
+// 결과: { faststart: boolean, ftyp: string|null, scannedBytes: number }
+async function probeMp4Faststart(file) {
+    const result = { faststart: false, ftyp: null, scannedBytes: 0 };
+    try {
+        const probeSize = Math.min(file.size, 1024 * 1024); // 첫 1MB
+        const blob = file.slice(0, probeSize);
+        const buf = await blob.arrayBuffer();
+        const view = new DataView(buf);
+        let pos = 0;
+        while (pos + 8 <= buf.byteLength) {
+            const size = view.getUint32(pos);
+            const type = String.fromCharCode(
+                view.getUint8(pos + 4),
+                view.getUint8(pos + 5),
+                view.getUint8(pos + 6),
+                view.getUint8(pos + 7)
+            );
+            if (type === 'ftyp') {
+                const major = String.fromCharCode(
+                    view.getUint8(pos + 8),
+                    view.getUint8(pos + 9),
+                    view.getUint8(pos + 10),
+                    view.getUint8(pos + 11)
+                );
+                result.ftyp = major;
+            }
+            if (type === 'moov') {
+                result.faststart = true;
+                result.scannedBytes = pos;
+                return result;
+            }
+            if (type === 'mdat') {
+                // moov 전에 mdat이 나타나면 non-faststart
+                result.scannedBytes = pos;
+                return result;
+            }
+            if (size === 0) break;
+            if (size === 1) {
+                // 64-bit large size
+                const high = view.getUint32(pos + 8);
+                const low = view.getUint32(pos + 12);
+                const big = high * 0x100000000 + low;
+                if (!Number.isFinite(big) || big <= 0) break;
+                pos += big;
+            } else if (size < 8) {
+                break;
+            } else {
+                pos += size;
+            }
+            result.scannedBytes = pos;
+        }
+    } catch (err) {
+        // 읽기 실패는 무시 (네트워크/권한 등)
+    }
+    return result;
+}
+
+function isIOS() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) return true;
+    // iPadOS 13+에서는 UA가 Mac으로 보고되지만 터치가 있다
+    if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return true;
+    return false;
+}
+
 function setVideoLoadingStatus(state, extra = '') {
     if (!videoLoadingStatus) return;
     videoLoadingStatus.classList.remove('is-warning', 'is-error');
@@ -1460,8 +1668,16 @@ function setVideoLoadingStatus(state, extra = '') {
             videoLoadingStatus.textContent = `⚠️ ${extra} - 큰 파일은 메타데이터 위치(moov atom)에 따라 로딩이 매우 느릴 수 있습니다.`;
             videoLoadingStatus.classList.add('is-warning');
             break;
+        case 'ios-warning':
+            videoLoadingStatus.textContent = `⚠️ ${extra} iPad/iPhone Safari는 4GB가 넘는 영상이나 moov atom이 끝에 있는 MP4를 처리하지 못할 수 있습니다. 데스크톱에서 faststart로 변환하거나 파일을 분할해주세요.`;
+            videoLoadingStatus.classList.add('is-warning');
+            break;
         case 'error':
-            videoLoadingStatus.textContent = '⚠️ 영상을 불러오지 못했습니다. 파일이 너무 크거나 브라우저가 지원하지 않는 형식일 수 있습니다.';
+            if (isIOS()) {
+                videoLoadingStatus.textContent = '⚠️ iPad/iPhone에서 이 영상을 불러올 수 없습니다. 가능한 원인: ① 파일 크기가 Safari 한도(약 2~4GB)를 초과 ② MP4의 moov atom이 파일 끝에 있어 메모리가 부족 ③ HEVC/H.265 등 미지원 코덱. 데스크톱에서 \"-movflags +faststart\" 옵션으로 H.264 MP4로 변환하거나 파일을 분할해서 다시 시도해주세요.';
+            } else {
+                videoLoadingStatus.textContent = '⚠️ 영상을 불러오지 못했습니다. 파일이 너무 크거나 브라우저가 지원하지 않는 형식일 수 있습니다.';
+            }
             videoLoadingStatus.classList.add('is-error');
             break;
         case 'ready':
@@ -1495,6 +1711,8 @@ function initVideoEvents() {
         setVideoLoadingStatus('ready');
         totalDuration = Number.isFinite(video.duration) ? video.duration : 0;
         setTimeBadge();
+        // Premiere 타임라인은 처음 로드 시 자동 fit (전체 영상이 보이도록)
+        autoFitPremiereTimeline();
         renderTimeline();
         renderPremiereTimeline();
         resetForm();
@@ -1920,7 +2138,7 @@ function initControls() {
         button.addEventListener('click', () => setActiveTab(button.dataset.tab));
     });
 
-    videoInput.addEventListener('change', event => {
+    videoInput.addEventListener('change', async event => {
         const file = event.target.files?.[0];
         if (!file) return;
 
@@ -1933,6 +2151,19 @@ function initControls() {
         }
 
         updateFileInfo(file);
+
+        // iOS에서 큰 파일이거나 MP4의 moov atom이 끝에 있을 가능성이 있다면 미리 경고
+        if (isIOS() && /\.mp4$|\.m4v$|\.mov$/i.test(file.name)) {
+            const probe = await probeMp4Faststart(file);
+            const sizeGb = file.size / (1024 * 1024 * 1024);
+            const reasons = [];
+            if (sizeGb > 4) reasons.push(`${sizeGb.toFixed(1)}GB 파일`);
+            if (!probe.faststart) reasons.push('moov atom이 파일 앞쪽에 없음');
+            if (reasons.length > 0) {
+                setVideoLoadingStatus('ios-warning', reasons.join(', ') + '.');
+            }
+        }
+
         const url = URL.createObjectURL(file);
         if (currentVideoUrl) {
             URL.revokeObjectURL(currentVideoUrl);
@@ -2064,7 +2295,75 @@ initSettings();
 initGestures();
 initFullscreen();
 initResizers();
+initPremiereTimelineKeyboard();
 loadRecentFileInfo();
+
+function initPremiereTimelineKeyboard() {
+    document.addEventListener('keydown', (e) => {
+        if (!isPremiereDesign()) return;
+        // 텍스트 입력 중에는 단축키 무시
+        const tag = (e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+        // 모달 열려있으면 무시
+        const modal = document.getElementById('settingsModal');
+        if (modal && modal.classList.contains('is-open')) return;
+
+        const view = document.getElementById('premiereTimelineView');
+        if (!view) return;
+
+        if (e.code === 'Space') {
+            e.preventDefault();
+            if (!video.src) return;
+            if (video.paused) video.play().catch(() => {});
+            else video.pause();
+            return;
+        }
+
+        if (e.key === '+' || e.key === '=') {
+            e.preventDefault();
+            premiereTimelineZoom = Math.min(PREMIERE_TIMELINE_ZOOM_MAX, premiereTimelineZoom * 1.5);
+            if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+            renderPremiereTimeline();
+            return;
+        }
+        if (e.key === '-' || e.key === '_') {
+            e.preventDefault();
+            const minZoom = getEffectiveMinZoom();
+            premiereTimelineZoom = Math.max(minZoom, premiereTimelineZoom / 1.5);
+            if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+            renderPremiereTimeline();
+            return;
+        }
+        if (e.key === '0') {
+            e.preventDefault();
+            premiereTimelineZoom = getEffectiveMinZoom();
+            if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+            renderPremiereTimeline();
+            return;
+        }
+        if (e.key === 'Home') {
+            e.preventDefault();
+            video.currentTime = 0;
+            return;
+        }
+        if (e.key === 'End') {
+            e.preventDefault();
+            if (totalDuration > 0) video.currentTime = totalDuration;
+            return;
+        }
+        if (e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            video.currentTime = Math.max(0, (video.currentTime || 0) - (e.shiftKey ? 10 : 1));
+            return;
+        }
+        if (e.key === 'ArrowRight' && !e.metaKey && !e.ctrlKey) {
+            e.preventDefault();
+            const t = (video.currentTime || 0) + (e.shiftKey ? 10 : 1);
+            video.currentTime = totalDuration > 0 ? Math.min(totalDuration, t) : t;
+            return;
+        }
+    });
+}
 
 function initResizers() {
     addHorizontalResizer({
