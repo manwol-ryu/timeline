@@ -105,6 +105,35 @@
                 </div>
             </div>
 
+            <div class="settings-section">
+                <h3>영상 호환성 (faststart)</h3>
+                <p>영상 파일의 메타데이터(moov atom) 위치를 메모리 안에서만 앞쪽으로 옮겨, 큰 영상이나 호환성이 떨어지는 MP4를 빠르게 열 수 있게 해줍니다. <strong>원본 파일은 절대 수정되지 않습니다.</strong></p>
+                <div class="setting-row">
+                    <label for="faststartToggle">자동 faststart 적용</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="faststartToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-description">
+                    <p><strong>✅ 켜면 좋은 경우</strong></p>
+                    <ul>
+                        <li>iPad/iPhone에서 큰 영상(2GB 이상)이 안 열릴 때</li>
+                        <li>"영상을 불러오지 못했습니다" 오류가 나올 때</li>
+                        <li>로딩이 1분 이상 걸리는 영상</li>
+                    </ul>
+                    <p><strong>⚠️ 알아두세요</strong></p>
+                    <ul>
+                        <li>처음 영상 분석에 5~30초 추가 시간이 듭니다 (파일 크기 따라)</li>
+                        <li>원본 파일은 그대로이며 디스크에 새 파일을 만들지 않습니다 (메모리 안에서만 동작)</li>
+                        <li>이미 faststart로 만들어진 파일은 자동으로 건너뛰므로 끄지 않아도 됩니다</li>
+                        <li>HEVC/H.265 같은 <strong>코덱 비호환 문제는 해결하지 못합니다</strong> (이건 PC에서 H.264로 변환해야 함)</li>
+                        <li>드물게 비표준 MP4에서 실패하면 자동으로 원본으로 되돌립니다</li>
+                    </ul>
+                    <p><strong>🔧 동작 원리</strong>: 파일 끝에 있는 moov 박스를 메모리에 읽어 청크 위치 정보를 보정한 뒤, 가상의 [ftyp][moov][mdat] 순서를 가진 blob을 만들어 영상 요소에 전달합니다. 원본 파일을 복사하지 않고 참조만 하므로 11GB짜리 파일도 메모리는 수십 MB만 사용합니다.</p>
+                </div>
+            </div>
+
             <div class="settings-section" id="pwaSection">
                 <h3>홈 화면 앱 (PWA)</h3>
                 <p>홈 화면에 추가하면 주소창과 탭바 없이 진짜 전체화면으로 사용할 수 있어요. CSS 확대 모드와 함께 쓰면 iPad에서 더블탭/2배속 제스처 + 풀스크린이 모두 가능해집니다.</p>

@@ -52,6 +52,8 @@ let totalDuration = 0;
 let selectedFileSize = 0;
 let selectedFileName = '';
 let currentVideoUrl = '';
+let currentLoadedFile = null;
+let currentLoadedFaststartActive = false;
 const DEFAULT_VIDEO_ASPECT = '16 / 9';
 const DEFAULT_SEGMENT_COLOR = '#3b82f6';
 const STORAGE_KEY_PREFIX = 'timeline_data_';
@@ -66,6 +68,7 @@ const STORAGE_PWA_HINT = 'timeline_pwa_hint';
 const STORAGE_DESIGN = 'timeline_design';
 const DESIGN_DEFAULT = 'default';
 const VALID_DESIGNS = ['default', 'ipad', 'premiere'];
+const STORAGE_FASTSTART_AUTO = 'timeline_faststart_auto';
 
 let _premiereOriginalParents = null;
 let premiereTimelineZoom = 8; // px per second (default)
@@ -1525,6 +1528,11 @@ function loadDefaultSettings() {
         designSelect.value = getDesign();
     }
 
+    const faststartToggle = document.getElementById('faststartToggle');
+    if (faststartToggle) {
+        faststartToggle.checked = getAutoFaststart();
+    }
+
     syncPwaUi();
 }
 
@@ -1583,6 +1591,218 @@ function loadDarkMode() {
     document.getElementById('darkModeToggle').checked = darkMode;
     if (darkMode) {
         document.documentElement.setAttribute('data-theme', 'dark');
+    }
+}
+
+// =====================================================================
+// faststart 자동 적용 (MP4 컨테이너 재인덱싱)
+// 원본 파일은 절대 수정되지 않음. 메모리에서 moov만 보정 후
+// 가상의 blob([ftyp][새 moov][중간][끝])을 video.src로 사용한다.
+// =====================================================================
+
+function getAutoFaststart() {
+    const v = localStorage.getItem(STORAGE_FASTSTART_AUTO);
+    return v === null ? true : v === 'true';
+}
+
+function setAutoFaststart(enabled) {
+    localStorage.setItem(STORAGE_FASTSTART_AUTO, enabled ? 'true' : 'false');
+}
+
+function looksLikeMp4(file) {
+    if (!file) return false;
+    if (/\.(mp4|m4v|m4a|mov)$/i.test(file.name || '')) return true;
+    if (/^video\/(mp4|quicktime|x-m4v)/i.test(file.type || '')) return true;
+    return false;
+}
+
+// 단일 박스 헤더 파싱: [4B size][4B type][optional 8B large size]
+function parseBoxHeader(view, offset) {
+    if (offset + 8 > view.byteLength) return null;
+    let size = view.getUint32(offset);
+    const type = String.fromCharCode(
+        view.getUint8(offset + 4),
+        view.getUint8(offset + 5),
+        view.getUint8(offset + 6),
+        view.getUint8(offset + 7)
+    );
+    let headerSize = 8;
+    if (size === 1) {
+        if (offset + 16 > view.byteLength) return null;
+        const high = view.getUint32(offset + 8);
+        const low = view.getUint32(offset + 12);
+        size = high * 0x100000000 + low;
+        headerSize = 16;
+    }
+    return { size, type, headerSize, payloadOffset: offset + headerSize };
+}
+
+// 파일 최상위 박스 워킹: 각 박스 헤더(최대 16바이트)만 읽으므로 매우 빠름.
+// 11GB 파일이라도 수십 바이트만 디스크에서 읽음.
+async function walkTopLevelBoxes(file) {
+    const boxes = [];
+    let offset = 0;
+    let safetyLimit = 200;
+    while (offset < file.size && safetyLimit-- > 0) {
+        const headBuf = await file.slice(offset, offset + 16).arrayBuffer();
+        if (headBuf.byteLength < 8) break;
+        const view = new DataView(headBuf);
+        const box = parseBoxHeader(view, 0);
+        if (!box) break;
+        if (box.size === 0) {
+            box.size = file.size - offset;
+        }
+        if (box.size < box.headerSize) break;
+        boxes.push({
+            type: box.type,
+            fileOffset: offset,
+            size: box.size,
+            headerSize: box.headerSize
+        });
+        offset += box.size;
+    }
+    return boxes;
+}
+
+// 메모리에 올라온 box 안을 워킹 (재귀용)
+const MP4_CONTAINER_TYPES = new Set([
+    'moov', 'trak', 'edts', 'mdia', 'minf', 'dinf',
+    'stbl', 'mvex', 'moof', 'traf', 'udta', 'sinf',
+    'rinf', 'tref', 'iprp', 'ipco'
+]);
+
+function walkInsideBox(view, parentOffset, parentSize, callback) {
+    let offset = parentOffset;
+    const end = parentOffset + parentSize;
+    let safetyLimit = 10000;
+    while (offset + 8 <= end && safetyLimit-- > 0) {
+        const box = parseBoxHeader(view, offset);
+        if (!box) break;
+        if (box.size === 0) box.size = end - offset;
+        if (box.size < box.headerSize || offset + box.size > end) break;
+        callback({
+            type: box.type,
+            offset,
+            size: box.size,
+            headerSize: box.headerSize,
+            payloadOffset: box.payloadOffset,
+            payloadSize: box.size - box.headerSize
+        });
+        offset += box.size;
+    }
+}
+
+// moov 안의 stco(32bit) / co64(64bit) 청크 오프셋 테이블에 shift 더하기
+function shiftMoovChunkOffsets(moovView, moovTotalSize, shift) {
+    let stcoCount = 0;
+    let co64Count = 0;
+    function recurse(offset, size) {
+        walkInsideBox(moovView, offset, size, (box) => {
+            if (MP4_CONTAINER_TYPES.has(box.type)) {
+                recurse(box.payloadOffset, box.payloadSize);
+            } else if (box.type === 'stco') {
+                const count = moovView.getUint32(box.payloadOffset + 4);
+                for (let i = 0; i < count; i++) {
+                    const p = box.payloadOffset + 8 + i * 4;
+                    if (p + 4 > moovTotalSize) break;
+                    moovView.setUint32(p, moovView.getUint32(p) + shift);
+                }
+                stcoCount += count;
+            } else if (box.type === 'co64') {
+                const count = moovView.getUint32(box.payloadOffset + 4);
+                for (let i = 0; i < count; i++) {
+                    const p = box.payloadOffset + 8 + i * 8;
+                    if (p + 8 > moovTotalSize) break;
+                    const high = moovView.getUint32(p);
+                    const low = moovView.getUint32(p + 4);
+                    const oldVal = high * 0x100000000 + low;
+                    const newVal = oldVal + shift;
+                    moovView.setUint32(p, Math.floor(newVal / 0x100000000));
+                    moovView.setUint32(p + 4, newVal % 0x100000000);
+                }
+                co64Count += count;
+            }
+        });
+    }
+    // moov 박스 자체부터 시작 (header 8B 또는 16B 스킵해서 내부로)
+    const rootBox = parseBoxHeader(moovView, 0);
+    if (rootBox && rootBox.type === 'moov') {
+        recurse(rootBox.payloadOffset, rootBox.size - rootBox.headerSize);
+    }
+    return { stco: stcoCount, co64: co64Count };
+}
+
+// faststart blob URL 생성. 필요 없거나 실패하면 null.
+async function makeFaststartBlobUrl(file) {
+    const boxes = await walkTopLevelBoxes(file);
+    if (!boxes.length) return null;
+
+    const ftyp = boxes.find(b => b.type === 'ftyp');
+    const moov = boxes.find(b => b.type === 'moov');
+    const mdat = boxes.find(b => b.type === 'mdat');
+    if (!ftyp || !moov || !mdat) return null;
+    if (ftyp.fileOffset !== 0) return null; // ftyp가 맨 앞에 없으면 비표준
+
+    // 이미 faststart인지 (moov가 mdat보다 앞에 있음)
+    if (moov.fileOffset < mdat.fileOffset) {
+        return null;
+    }
+
+    // moov 크기 안전 한계 (메모리 보호)
+    const maxMoovSize = isIOS() ? 250 * 1024 * 1024 : 1024 * 1024 * 1024;
+    if (moov.size > maxMoovSize) {
+        throw new Error(`moov atom이 너무 큽니다 (${(moov.size / 1024 / 1024).toFixed(0)}MB > ${(maxMoovSize / 1024 / 1024).toFixed(0)}MB)`);
+    }
+
+    // moov 메모리에 읽기
+    const moovBlob = file.slice(moov.fileOffset, moov.fileOffset + moov.size);
+    const moovBuffer = await moovBlob.arrayBuffer();
+    if (moovBuffer.byteLength !== moov.size) {
+        throw new Error('moov 읽기 크기 불일치');
+    }
+    const moovView = new DataView(moovBuffer);
+
+    // moov가 새 위치(파일 앞)로 가면 mdat 등 모든 데이터가 moov.size만큼 뒤로 밀림
+    const shift = moov.size;
+    shiftMoovChunkOffsets(moovView, moov.size, shift);
+
+    // 새 blob 구성: [ftyp 그대로] + [보정된 moov] + [ftyp~원래 moov 직전] + [원래 moov 직후~끝]
+    // file.slice() 들은 데이터 복사 없이 참조만이므로 11GB여도 메모리 사용 거의 0
+    const ftypEnd = ftyp.fileOffset + ftyp.size;
+    const moovEnd = moov.fileOffset + moov.size;
+
+    const parts = [
+        file.slice(0, ftypEnd),
+        moovBuffer,
+        file.slice(ftypEnd, moov.fileOffset),
+    ];
+    if (moovEnd < file.size) {
+        parts.push(file.slice(moovEnd));
+    }
+
+    const newBlob = new Blob(parts, { type: file.type || 'video/mp4' });
+    return URL.createObjectURL(newBlob);
+}
+
+// faststart를 적용한 video URL을 반환. 실패/불필요 시 원본 blob URL.
+async function getVideoBlobUrl(file) {
+    if (!getAutoFaststart() || !looksLikeMp4(file)) {
+        return { url: URL.createObjectURL(file), faststart: false };
+    }
+    try {
+        setVideoLoadingStatus('faststart-analyzing');
+        const url = await makeFaststartBlobUrl(file);
+        if (url) {
+            setVideoLoadingStatus('ready');
+            return { url, faststart: true };
+        }
+        // 이미 faststart거나 MP4가 아니거나 비표준 → 원본 사용
+        setVideoLoadingStatus('ready');
+        return { url: URL.createObjectURL(file), faststart: false };
+    } catch (err) {
+        console.warn('[faststart] failed, using original:', err);
+        setVideoLoadingStatus('faststart-failed');
+        return { url: URL.createObjectURL(file), faststart: false };
     }
 }
 
@@ -1657,6 +1877,16 @@ function setVideoLoadingStatus(state, extra = '') {
     if (!videoLoadingStatus) return;
     videoLoadingStatus.classList.remove('is-warning', 'is-error');
     switch (state) {
+        case 'faststart-analyzing':
+            videoLoadingStatus.textContent = 'faststart 분석 중... (파일 끝의 moov atom 위치 확인)';
+            break;
+        case 'faststart-applied':
+            videoLoadingStatus.textContent = '✅ faststart 적용됨 (메모리 안에서만, 원본 파일은 그대로)';
+            break;
+        case 'faststart-failed':
+            videoLoadingStatus.textContent = '⚠️ faststart 적용 실패 — 원본으로 재시도합니다.';
+            videoLoadingStatus.classList.add('is-warning');
+            break;
         case 'loading':
             videoLoadingStatus.textContent = '영상 메타데이터 불러오는 중...';
             break;
@@ -1734,6 +1964,18 @@ function initVideoEvents() {
     video.addEventListener('error', () => {
         clearTimeout(videoLoadingTimer);
         hideVideoLoadingProgress();
+        // faststart로 변환한 영상이 실패하면 원본으로 한 번 재시도
+        if (currentLoadedFaststartActive && currentLoadedFile) {
+            console.warn('[faststart] video error, retrying with original file');
+            currentLoadedFaststartActive = false;
+            const fallback = currentLoadedFile;
+            if (currentVideoUrl) URL.revokeObjectURL(currentVideoUrl);
+            currentVideoUrl = URL.createObjectURL(fallback);
+            video.src = currentVideoUrl;
+            video.load();
+            setVideoLoadingStatus('faststart-failed');
+            return;
+        }
         setVideoLoadingStatus('error');
     });
 
@@ -2153,7 +2395,8 @@ function initControls() {
         updateFileInfo(file);
 
         // iOS에서 큰 파일이거나 MP4의 moov atom이 끝에 있을 가능성이 있다면 미리 경고
-        if (isIOS() && /\.mp4$|\.m4v$|\.mov$/i.test(file.name)) {
+        // (faststart 자동 적용이 꺼진 경우에만 경고만 출력)
+        if (isIOS() && !getAutoFaststart() && /\.mp4$|\.m4v$|\.mov$/i.test(file.name)) {
             const probe = await probeMp4Faststart(file);
             const sizeGb = file.size / (1024 * 1024 * 1024);
             const reasons = [];
@@ -2164,18 +2407,25 @@ function initControls() {
             }
         }
 
-        const url = URL.createObjectURL(file);
+        // 다음 비디오 에러 발생 시 원본으로 fallback 가능하도록 파일 보관
+        currentLoadedFile = file;
+
+        // faststart 적용된 URL 또는 원본 URL을 받음
+        const { url, faststart } = await getVideoBlobUrl(file);
+        currentLoadedFaststartActive = faststart;
         if (currentVideoUrl) {
             URL.revokeObjectURL(currentVideoUrl);
         }
         currentVideoUrl = url;
         video.src = url;
         video.load();
+        if (faststart) {
+            setVideoLoadingStatus('faststart-applied');
+        }
 
         // 해당 파일의 타임라인 불러오기
         const loaded = loadFromLocalStorage(file.name);
         if (!loaded) {
-            // 저장된 타임라인이 없으면 초기화
             segments = [];
             renderAll();
         }
@@ -2240,6 +2490,14 @@ function initSettings() {
         designSelect.addEventListener('change', (e) => {
             setDesign(e.target.value);
             showFormStatus('디자인 변경됨');
+        });
+    }
+
+    const faststartToggle = document.getElementById('faststartToggle');
+    if (faststartToggle) {
+        faststartToggle.addEventListener('change', (e) => {
+            setAutoFaststart(e.target.checked);
+            showFormStatus(e.target.checked ? 'faststart 자동 적용 켜짐' : 'faststart 자동 적용 꺼짐');
         });
     }
 
