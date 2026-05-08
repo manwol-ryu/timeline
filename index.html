@@ -167,6 +167,18 @@
                     </div>
                     <span id="convertStatus" class="convert-status" aria-live="polite"></span>
                     <p id="videoLoadingStatus" class="video-loading-status" aria-live="polite"></p>
+                    <div id="videoLoadingProgress" class="video-loading-progress" hidden>
+                        <div class="video-loading-progress-bar">
+                            <div id="videoLoadingProgressFill" class="video-loading-progress-fill"></div>
+                        </div>
+                        <div class="video-loading-progress-meta">
+                            <span id="videoLoadingProgressPercent">0%</span>
+                            <span id="videoLoadingProgressElapsed">0초 경과</span>
+                        </div>
+                    </div>
+                    <div id="fileThumbnailWrap" class="file-thumbnail-wrap" hidden>
+                        <img id="fileThumbnail" class="file-thumbnail" alt="영상 썸네일">
+                    </div>
                 </div>
 
                 <div id="videoFrame" class="video-frame">
