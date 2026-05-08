@@ -17,6 +17,12 @@ const changeVideoButton = document.getElementById('changeVideo');
 const convertVideoButton = document.getElementById('convertVideo');
 const convertStatus = document.getElementById('convertStatus');
 const videoLoadingStatus = document.getElementById('videoLoadingStatus');
+const videoLoadingProgress = document.getElementById('videoLoadingProgress');
+const videoLoadingProgressFill = document.getElementById('videoLoadingProgressFill');
+const videoLoadingProgressPercent = document.getElementById('videoLoadingProgressPercent');
+const videoLoadingProgressElapsed = document.getElementById('videoLoadingProgressElapsed');
+const fileThumbnailWrap = document.getElementById('fileThumbnailWrap');
+const fileThumbnailImg = document.getElementById('fileThumbnail');
 const fullscreenButton = document.getElementById('fullscreenButton');
 const segmentTitle = document.getElementById('segmentTitle');
 const startTimeInput = document.getElementById('startTime');
@@ -62,6 +68,9 @@ const DESIGN_DEFAULT = 'default';
 const VALID_DESIGNS = ['default', 'ipad', 'premiere'];
 
 let _premiereOriginalParents = null;
+let premiereTimelineZoom = 8; // px per second (default)
+const PREMIERE_TIMELINE_ZOOM_MIN = 0.5;
+const PREMIERE_TIMELINE_ZOOM_MAX = 600;
 
 function getDesign() {
     const stored = localStorage.getItem(STORAGE_DESIGN);
@@ -71,6 +80,11 @@ function getDesign() {
 function setDesign(design) {
     if (!VALID_DESIGNS.includes(design)) return;
     localStorage.setItem(STORAGE_DESIGN, design);
+    if (design === 'premiere') {
+        toggleDarkMode(true);
+        const darkToggle = document.getElementById('darkModeToggle');
+        if (darkToggle) darkToggle.checked = true;
+    }
     applyDesign();
 }
 
@@ -110,8 +124,38 @@ function applyDesign() {
         zone.hidden = true;
     }
 
+    movePremiereQuickAddButton(design === 'premiere');
+
     if (typeof renderPremiereTimeline === 'function') {
         renderPremiereTimeline();
+    }
+}
+
+let _quickAddOriginalSlot = null;
+function movePremiereQuickAddButton(toPremiere) {
+    const quickBtn = document.getElementById('quickAddMemo');
+    const saveBtn = document.getElementById('saveSegment');
+    if (!quickBtn || !saveBtn) return;
+
+    if (toPremiere) {
+        if (!_quickAddOriginalSlot) {
+            _quickAddOriginalSlot = {
+                parent: quickBtn.parentNode,
+                nextSibling: quickBtn.nextSibling,
+                label: quickBtn.textContent,
+            };
+        }
+        // saveSegment 바로 옆으로 이동
+        saveBtn.parentNode.insertBefore(quickBtn, saveBtn.nextSibling);
+        quickBtn.textContent = '빠른 추가';
+        quickBtn.classList.remove('primary');
+        quickBtn.classList.add('ghost');
+    } else if (_quickAddOriginalSlot) {
+        _quickAddOriginalSlot.parent.insertBefore(quickBtn, _quickAddOriginalSlot.nextSibling);
+        quickBtn.textContent = _quickAddOriginalSlot.label || '현재 장면 메모 추가';
+        quickBtn.classList.add('primary');
+        quickBtn.classList.remove('ghost');
+        _quickAddOriginalSlot = null;
     }
 }
 
@@ -126,8 +170,15 @@ function buildPremiereTimelineDom() {
     view.innerHTML = `
         <div class="premiere-tl-toolbar">
             <button type="button" class="premiere-tl-import">📁 IMPORT</button>
+            <button type="button" class="premiere-tl-export">⬇ EXPORT</button>
             <span class="premiere-tl-file" data-empty="파일이 선택되지 않음">파일이 선택되지 않음</span>
-            <span class="premiere-tl-rate">2x</span>
+            <div class="premiere-tl-zoom">
+                <button type="button" class="premiere-tl-zoom-btn" data-zoom="out" title="축소">−</button>
+                <input type="range" class="premiere-tl-zoom-slider" min="0" max="100" value="20">
+                <button type="button" class="premiere-tl-zoom-btn" data-zoom="in" title="확대">+</button>
+                <button type="button" class="premiere-tl-zoom-btn" data-zoom="fit" title="전체보기">⤢</button>
+                <span class="premiere-tl-zoom-level">8 px/s</span>
+            </div>
         </div>
         <div class="premiere-tl-main">
             <div class="premiere-tl-tracks-area">
@@ -163,6 +214,55 @@ function buildPremiereTimelineDom() {
         const input = document.getElementById('videoInput');
         if (input) input.click();
     });
+
+    view.querySelector('.premiere-tl-export').addEventListener('click', () => {
+        exportJson();
+    });
+
+    const zoomSlider = view.querySelector('.premiere-tl-zoom-slider');
+    const zoomLevel = view.querySelector('.premiere-tl-zoom-level');
+
+    function applyZoomFromSlider(val) {
+        // 0~100 슬라이더를 로그 스케일로 PX_PER_SEC로 변환
+        const min = Math.log(PREMIERE_TIMELINE_ZOOM_MIN);
+        const max = Math.log(PREMIERE_TIMELINE_ZOOM_MAX);
+        const t = Math.max(0, Math.min(100, Number(val))) / 100;
+        premiereTimelineZoom = Math.exp(min + (max - min) * t);
+        zoomLevel.textContent = `${premiereTimelineZoom.toFixed(1)} px/s`;
+        renderPremiereTimeline();
+    }
+
+    function setZoomSliderFromValue() {
+        const min = Math.log(PREMIERE_TIMELINE_ZOOM_MIN);
+        const max = Math.log(PREMIERE_TIMELINE_ZOOM_MAX);
+        const t = (Math.log(premiereTimelineZoom) - min) / (max - min);
+        zoomSlider.value = String(Math.max(0, Math.min(100, t * 100)));
+    }
+
+    zoomSlider.addEventListener('input', () => applyZoomFromSlider(zoomSlider.value));
+
+    view.querySelectorAll('.premiere-tl-zoom-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const action = btn.dataset.zoom;
+            if (action === 'in') {
+                premiereTimelineZoom = Math.min(PREMIERE_TIMELINE_ZOOM_MAX, premiereTimelineZoom * 1.5);
+            } else if (action === 'out') {
+                premiereTimelineZoom = Math.max(PREMIERE_TIMELINE_ZOOM_MIN, premiereTimelineZoom / 1.5);
+            } else if (action === 'fit') {
+                const tracksArea = view.querySelector('.premiere-tl-tracks-area');
+                const headerW = view.querySelector('.premiere-tl-headers')?.offsetWidth || 52;
+                const availW = Math.max(200, (tracksArea?.clientWidth || 800) - headerW - 8);
+                if (totalDuration > 0) {
+                    premiereTimelineZoom = Math.max(PREMIERE_TIMELINE_ZOOM_MIN, Math.min(PREMIERE_TIMELINE_ZOOM_MAX, availW / totalDuration));
+                }
+            }
+            setZoomSliderFromValue();
+            zoomLevel.textContent = `${premiereTimelineZoom.toFixed(1)} px/s`;
+            renderPremiereTimeline();
+        });
+    });
+
+    setZoomSliderFromValue();
 
     const detail = view.querySelector('.premiere-tl-detail');
     view.querySelector('.premiere-tl-detail-close').addEventListener('click', () => {
@@ -217,6 +317,55 @@ function formatBytesShort(bytes) {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+function normalizeColor(c) {
+    return (c || DEFAULT_SEGMENT_COLOR).toLowerCase();
+}
+
+function segmentsOverlap(a, b) {
+    return !(a.end <= b.start || a.start >= b.end);
+}
+
+// 색상 그룹별로 같은 줄에 배치하되, 겹치면 그 색상의 다음 줄로 push.
+// 결과: [{ color, rows: [[seg, ...], [seg, ...]] }, ...] 를 평탄화한 트랙 배열
+function computeMemoTracks(segs) {
+    const colorOrder = [];
+    const groups = new Map();
+    segs.forEach(seg => {
+        const color = normalizeColor(seg.color);
+        if (!groups.has(color)) {
+            groups.set(color, []);
+            colorOrder.push(color);
+        }
+        groups.get(color).push(seg);
+    });
+
+    const tracks = [];
+    for (const color of colorOrder) {
+        const list = groups.get(color).slice().sort((a, b) => a.start - b.start);
+        const rows = [];
+        for (const seg of list) {
+            let placed = false;
+            for (const row of rows) {
+                if (!row.some(other => segmentsOverlap(seg, other))) {
+                    row.push(seg);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) rows.push([seg]);
+        }
+        rows.forEach((rowSegs, rowIdx) => {
+            tracks.push({ color, rowIdx, segments: rowSegs });
+        });
+    }
+    return tracks;
+}
+
+function getTimelinePixelsPerSecond() {
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) return 0;
+    return premiereTimelineZoom;
+}
+
 function renderPremiereTimeline() {
     if (!isPremiereDesign()) return;
     const view = ensurePremiereTimelineView();
@@ -228,6 +377,11 @@ function renderPremiereTimeline() {
         const durPart = totalDuration > 0 ? formatTime(totalDuration) : '';
         const parts = [selectedFileName, sizePart, durPart].filter(Boolean);
         fileLabel.textContent = parts.length ? parts.join(' · ') : fileLabel.dataset.empty;
+    }
+
+    const zoomLabel = view.querySelector('.premiere-tl-zoom-level');
+    if (zoomLabel) {
+        zoomLabel.textContent = `${premiereTimelineZoom.toFixed(1)} px/s`;
     }
 
     const headersContainer = view.querySelector('.premiere-tl-headers');
@@ -242,15 +396,20 @@ function renderPremiereTimeline() {
 
     if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
         if (playhead) playhead.hidden = true;
+        canvas.style.width = '';
         return;
     }
 
-    const ticks = 8;
-    for (let i = 0; i <= ticks; i++) {
-        const t = (totalDuration / ticks) * i;
+    const pxPerSec = getTimelinePixelsPerSecond();
+    const totalWidthPx = Math.max(200, totalDuration * pxPerSec);
+    canvas.style.width = `${totalWidthPx}px`;
+
+    // 줌 레벨에 따라 눈금 간격을 적절히 결정
+    const tickInterval = pickRulerTickInterval(totalDuration, pxPerSec);
+    for (let t = 0; t <= totalDuration + 0.001; t += tickInterval) {
         const tick = document.createElement('span');
         tick.className = 'premiere-tl-ruler-tick';
-        tick.style.left = `${(i / ticks) * 100}%`;
+        tick.style.left = `${t * pxPerSec}px`;
         tick.textContent = formatTime(t);
         ruler.appendChild(tick);
     }
@@ -262,53 +421,89 @@ function renderPremiereTimeline() {
 
     const v1Track = document.createElement('div');
     v1Track.className = 'premiere-tl-track v1';
+    v1Track.style.width = `${totalWidthPx}px`;
     canvas.insertBefore(v1Track, playhead);
 
     const v1Clip = document.createElement('div');
     v1Clip.className = 'premiere-tl-clip v1-clip';
-    v1Clip.style.left = '0%';
-    v1Clip.style.width = '100%';
-    v1Clip.innerHTML = `<span>${selectedFileName ? selectedFileName : 'main video'}</span>`;
+    v1Clip.style.left = '0px';
+    v1Clip.style.width = `${totalWidthPx}px`;
+    const v1ClipLabel = document.createElement('span');
+    v1ClipLabel.textContent = selectedFileName ? selectedFileName : 'main video';
+    v1Clip.appendChild(v1ClipLabel);
     v1Track.appendChild(v1Clip);
 
-    segments.forEach((seg, idx) => {
-        const memoIndex = idx + 1;
-
+    const tracks = computeMemoTracks(segments);
+    tracks.forEach((track) => {
         const header = document.createElement('div');
         header.className = 'premiere-tl-track-header memo';
-        header.textContent = `M${memoIndex}`;
+        const dot = document.createElement('span');
+        dot.className = 'premiere-tl-track-color-dot';
+        dot.style.background = track.color;
+        header.appendChild(dot);
         headersContainer.appendChild(header);
 
-        const track = document.createElement('div');
-        track.className = 'premiere-tl-track memo';
-        canvas.insertBefore(track, playhead);
+        const trackEl = document.createElement('div');
+        trackEl.className = 'premiere-tl-track memo';
+        trackEl.style.width = `${totalWidthPx}px`;
+        canvas.insertBefore(trackEl, playhead);
 
-        if (!Number.isFinite(seg.start) || !Number.isFinite(seg.end)) return;
-        const startPct = Math.max(0, Math.min(100, (seg.start / totalDuration) * 100));
-        const endPct = Math.max(0, Math.min(100, (seg.end / totalDuration) * 100));
-        const widthPct = Math.max(0.5, endPct - startPct);
+        track.segments.forEach(seg => {
+            if (!Number.isFinite(seg.start) || !Number.isFinite(seg.end)) return;
+            const startPx = Math.max(0, seg.start * pxPerSec);
+            const widthPx = Math.max(6, (seg.end - seg.start) * pxPerSec);
 
-        const clip = document.createElement('div');
-        clip.className = 'premiere-tl-clip memo-clip';
-        clip.style.left = `${startPct}%`;
-        clip.style.width = `${widthPct}%`;
-        if (seg.color) {
-            clip.style.background = seg.color;
-            clip.style.borderColor = 'rgba(0,0,0,0.5)';
-        }
-        clip.dataset.id = seg.id;
-        clip.title = `${seg.title || '제목 없음'} (${formatTime(seg.start)} ~ ${formatTime(seg.end)})`;
-        clip.innerHTML = `<span>M${memoIndex} · ${seg.title || '제목 없음'}</span>`;
-        clip.addEventListener('click', (e) => {
-            e.stopPropagation();
-            view.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
-            clip.classList.add('selected');
-            openPremiereClipDetail(seg.id);
+            const clip = document.createElement('div');
+            clip.className = 'premiere-tl-clip memo-clip';
+            clip.style.left = `${startPx}px`;
+            clip.style.width = `${widthPx}px`;
+            if (seg.color) {
+                clip.style.background = seg.color;
+                clip.style.borderColor = 'rgba(0,0,0,0.5)';
+            }
+            clip.dataset.id = seg.id;
+            clip.title = `${seg.title || '제목 없음'} (${formatTime(seg.start)} ~ ${formatTime(seg.end)})`;
+            const titleSpan = document.createElement('span');
+            titleSpan.textContent = seg.title || '제목 없음';
+            clip.appendChild(titleSpan);
+            const handleLeft = document.createElement('span');
+            handleLeft.className = 'premiere-tl-clip-handle premiere-tl-clip-handle-left';
+            handleLeft.dataset.handle = 'left';
+            const handleRight = document.createElement('span');
+            handleRight.className = 'premiere-tl-clip-handle premiere-tl-clip-handle-right';
+            handleRight.dataset.handle = 'right';
+            clip.appendChild(handleLeft);
+            clip.appendChild(handleRight);
+            clip.addEventListener('click', (e) => {
+                if (e.target.dataset && e.target.dataset.handle) return;
+                if (clip.dataset.dragHappened === '1') {
+                    delete clip.dataset.dragHappened;
+                    return;
+                }
+                e.stopPropagation();
+                view.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
+                clip.classList.add('selected');
+                openPremiereClipDetail(seg.id);
+            });
+            attachClipDragHandlers(clip, seg);
+            trackEl.appendChild(clip);
         });
-        track.appendChild(clip);
     });
 
     updatePremierePlayhead();
+}
+
+function pickRulerTickInterval(duration, pxPerSec) {
+    // 한 눈금이 적어도 60px이 되도록 간격을 고른다
+    const minPx = 60;
+    const candidates = [
+        1 / 60, 1 / 30, 1 / 10, 0.5, 1, 2, 5, 10, 15, 30,
+        60, 120, 300, 600, 1800, 3600
+    ];
+    for (const c of candidates) {
+        if (c * pxPerSec >= minPx) return c;
+    }
+    return Math.max(duration / 8, 1);
 }
 
 function openPremiereClipDetail(segId) {
@@ -343,8 +538,81 @@ function updatePremierePlayhead() {
         return;
     }
     playhead.hidden = false;
-    const pct = Math.max(0, Math.min(100, (video.currentTime / totalDuration) * 100));
-    playhead.style.left = `${pct}%`;
+    const pxPerSec = getTimelinePixelsPerSecond();
+    const px = Math.max(0, (video.currentTime || 0) * pxPerSec);
+    playhead.style.left = `${px}px`;
+}
+
+function attachClipDragHandlers(clip, seg) {
+    let dragMode = null; // 'move' | 'left' | 'right'
+    let dragStartX = 0;
+    let origStart = 0;
+    let origEnd = 0;
+    let pxPerSec = 1;
+
+    function onPointerDown(e) {
+        if (e.button !== undefined && e.button !== 0) return;
+        const handleType = e.target?.dataset?.handle;
+        dragMode = handleType === 'left' ? 'left'
+            : handleType === 'right' ? 'right'
+            : 'move';
+        dragStartX = e.clientX;
+        origStart = seg.start;
+        origEnd = seg.end;
+        pxPerSec = getTimelinePixelsPerSecond() || 1;
+        clip.classList.add('is-dragging');
+        clip.setPointerCapture?.(e.pointerId);
+        e.stopPropagation();
+        e.preventDefault();
+    }
+
+    function onPointerMove(e) {
+        if (!dragMode) return;
+        const deltaSec = (e.clientX - dragStartX) / pxPerSec;
+        if (Math.abs(e.clientX - dragStartX) > 3) {
+            clip.dataset.dragHappened = '1';
+        }
+        let newStart = origStart;
+        let newEnd = origEnd;
+        if (dragMode === 'move') {
+            const dur = origEnd - origStart;
+            newStart = Math.max(0, origStart + deltaSec);
+            newEnd = newStart + dur;
+            if (totalDuration > 0 && newEnd > totalDuration) {
+                newEnd = totalDuration;
+                newStart = newEnd - dur;
+            }
+        } else if (dragMode === 'left') {
+            newStart = Math.max(0, Math.min(origEnd - 0.1, origStart + deltaSec));
+        } else if (dragMode === 'right') {
+            newEnd = Math.max(origStart + 0.1, origEnd + deltaSec);
+            if (totalDuration > 0) newEnd = Math.min(totalDuration, newEnd);
+        }
+        seg.start = newStart;
+        seg.end = newEnd;
+        const startPx = Math.max(0, newStart * pxPerSec);
+        const widthPx = Math.max(6, (newEnd - newStart) * pxPerSec);
+        clip.style.left = `${startPx}px`;
+        clip.style.width = `${widthPx}px`;
+    }
+
+    function onPointerUp(e) {
+        if (!dragMode) return;
+        const wasDrag = clip.dataset.dragHappened === '1';
+        dragMode = null;
+        clip.classList.remove('is-dragging');
+        clip.releasePointerCapture?.(e.pointerId);
+        // click 이벤트가 먼저 발생할 시간을 줘서 dragHappened 플래그를 검사할 수 있게 함
+        setTimeout(() => {
+            if (wasDrag) saveToLocalStorage();
+            renderAll();
+        }, 0);
+    }
+
+    clip.addEventListener('pointerdown', onPointerDown);
+    clip.addEventListener('pointermove', onPointerMove);
+    clip.addEventListener('pointerup', onPointerUp);
+    clip.addEventListener('pointercancel', onPointerUp);
 }
 
 function isPwaHintEnabled() {
@@ -369,6 +637,53 @@ function isInStandalone() {
 const LARGE_FILE_WARNING_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
 const SLOW_LOAD_THRESHOLD_MS = 15000;
 let videoLoadingTimer = null;
+let videoLoadingStartedAt = 0;
+let videoLoadingElapsedTimer = null;
+let videoLoadingProgressIndeterminate = false;
+
+function showVideoLoadingProgress() {
+    if (!videoLoadingProgress) return;
+    videoLoadingProgress.hidden = false;
+    videoLoadingProgressIndeterminate = true;
+    videoLoadingProgressFill.classList.add('is-indeterminate');
+    videoLoadingProgressFill.style.width = '0%';
+    videoLoadingProgressPercent.textContent = '분석 중...';
+    videoLoadingStartedAt = Date.now();
+    videoLoadingProgressElapsed.textContent = '0초 경과';
+    clearInterval(videoLoadingElapsedTimer);
+    videoLoadingElapsedTimer = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - videoLoadingStartedAt) / 1000);
+        videoLoadingProgressElapsed.textContent = `${elapsedSec}초 경과`;
+    }, 250);
+}
+
+function updateVideoLoadingProgress() {
+    if (!videoLoadingProgress || videoLoadingProgress.hidden) return;
+    if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+    if (!video.buffered || video.buffered.length === 0) return;
+
+    let bufferedSec = 0;
+    for (let i = 0; i < video.buffered.length; i++) {
+        bufferedSec += video.buffered.end(i) - video.buffered.start(i);
+    }
+    const pct = Math.max(0, Math.min(100, (bufferedSec / video.duration) * 100));
+    if (videoLoadingProgressIndeterminate) {
+        videoLoadingProgressFill.classList.remove('is-indeterminate');
+        videoLoadingProgressIndeterminate = false;
+    }
+    videoLoadingProgressFill.style.width = `${pct}%`;
+    videoLoadingProgressPercent.textContent = `${pct.toFixed(1)}%`;
+}
+
+function hideVideoLoadingProgress() {
+    if (!videoLoadingProgress) return;
+    clearInterval(videoLoadingElapsedTimer);
+    videoLoadingElapsedTimer = null;
+    videoLoadingProgress.hidden = true;
+    videoLoadingProgressFill.classList.remove('is-indeterminate');
+    videoLoadingProgressFill.style.width = '0%';
+    videoLoadingProgressIndeterminate = false;
+}
 
 function getFullscreenMode() {
     const stored = localStorage.getItem(STORAGE_FULLSCREEN_MODE);
@@ -447,7 +762,10 @@ function updateFileInfo(file) {
         convertVideoButton.disabled = false;
         convertVideoButton.textContent = '파일 변환';
         setVideoLoadingStatus('ready');
+        hideVideoLoadingProgress();
         setVideoAspect();
+        if (fileThumbnailWrap) fileThumbnailWrap.hidden = true;
+        if (fileThumbnailImg) fileThumbnailImg.src = '';
         return;
     }
     selectedFileSize = file.size;
@@ -1156,6 +1474,9 @@ function setVideoLoadingStatus(state, extra = '') {
 function initVideoEvents() {
     video.addEventListener('loadstart', () => {
         clearTimeout(videoLoadingTimer);
+        if (video.src) {
+            showVideoLoadingProgress();
+        }
         if (selectedFileSize > LARGE_FILE_WARNING_BYTES) {
             const sizeText = `${(selectedFileSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
             setVideoLoadingStatus('large-file', sizeText);
@@ -1167,6 +1488,8 @@ function initVideoEvents() {
         }
     });
 
+    video.addEventListener('progress', updateVideoLoadingProgress);
+
     video.addEventListener('loadedmetadata', () => {
         clearTimeout(videoLoadingTimer);
         setVideoLoadingStatus('ready');
@@ -1177,10 +1500,22 @@ function initVideoEvents() {
         resetForm();
         refreshFileDetails();
         updateVideoAspectFromMetadata();
+        updateVideoLoadingProgress();
+    });
+
+    video.addEventListener('loadeddata', () => {
+        captureVideoThumbnail();
+    });
+
+    video.addEventListener('canplay', () => {
+        updateVideoLoadingProgress();
+        // 재생 가능 상태가 되면 진행률 UI를 숨김
+        setTimeout(hideVideoLoadingProgress, 400);
     });
 
     video.addEventListener('error', () => {
         clearTimeout(videoLoadingTimer);
+        hideVideoLoadingProgress();
         setVideoLoadingStatus('error');
     });
 
@@ -1188,6 +1523,29 @@ function initVideoEvents() {
         setTimeBadge();
         updatePremierePlayhead();
     });
+}
+
+function captureVideoThumbnail() {
+    if (!fileThumbnailWrap || !fileThumbnailImg) return;
+    if (!video.videoWidth || !video.videoHeight) {
+        fileThumbnailWrap.hidden = true;
+        return;
+    }
+    try {
+        const canvas = document.createElement('canvas');
+        const maxWidth = 480;
+        const ratio = video.videoHeight / video.videoWidth;
+        canvas.width = Math.min(maxWidth, video.videoWidth);
+        canvas.height = Math.round(canvas.width * ratio);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        fileThumbnailImg.src = dataUrl;
+        fileThumbnailWrap.hidden = false;
+    } catch (err) {
+        // 보안 정책으로 캡처 실패 시 무시
+        fileThumbnailWrap.hidden = true;
+    }
 }
 
 function initFullscreen() {
@@ -1693,6 +2051,10 @@ function initSettings() {
     loadDarkMode();
 }
 
+const STORAGE_PANEL_RATIO_TOP = 'timeline_panel_ratio_top';
+const STORAGE_PANEL_RATIO_BOTTOM = 'timeline_panel_ratio_bottom';
+const STORAGE_PANEL_RATIO_VERT = 'timeline_panel_ratio_vert';
+
 applyDesign();
 setVideoAspect();
 resetForm();
@@ -1701,4 +2063,259 @@ initControls();
 initSettings();
 initGestures();
 initFullscreen();
+initResizers();
 loadRecentFileInfo();
+
+function initResizers() {
+    addHorizontalResizer({
+        getContainer: () => document.querySelector('.app-shell'),
+        getCols: () => {
+            const c = document.querySelector('.app-shell');
+            return [c.querySelector('.video-stage'), c.querySelector('.workspace')];
+        },
+        storageKey: STORAGE_PANEL_RATIO_TOP,
+        designFilter: () => true,
+    });
+
+    addHorizontalResizer({
+        getContainer: () => document.getElementById('premiereBottomZone'),
+        getCols: () => {
+            const z = document.getElementById('premiereBottomZone');
+            if (!z) return null;
+            const left = z.querySelector('#fileInfoCard') || z.querySelector('#uploadCard');
+            const right = z.querySelector('#timelinePanel');
+            return left && right ? [left, right] : null;
+        },
+        storageKey: STORAGE_PANEL_RATIO_BOTTOM,
+        designFilter: () => isPremiereDesign(),
+    });
+
+    addVerticalResizer({
+        getContainer: () => document.body,
+        getRows: () => {
+            return [document.querySelector('.app-shell'), document.getElementById('premiereBottomZone')];
+        },
+        storageKey: STORAGE_PANEL_RATIO_VERT,
+        designFilter: () => isPremiereDesign(),
+    });
+
+    applyStoredPanelRatios();
+    window.addEventListener('resize', () => applyStoredPanelRatios());
+}
+
+function applyStoredPanelRatios() {
+    const topRatio = parseFloat(localStorage.getItem(STORAGE_PANEL_RATIO_TOP));
+    if (Number.isFinite(topRatio) && topRatio > 0.05 && topRatio < 0.95) {
+        const c = document.querySelector('.app-shell');
+        if (c) c.style.gridTemplateColumns = `minmax(0, ${topRatio}fr) minmax(0, ${1 - topRatio}fr)`;
+    }
+    if (isPremiereDesign()) {
+        const botRatio = parseFloat(localStorage.getItem(STORAGE_PANEL_RATIO_BOTTOM));
+        if (Number.isFinite(botRatio) && botRatio > 0.05 && botRatio < 0.95) {
+            const z = document.getElementById('premiereBottomZone');
+            if (z) z.style.gridTemplateColumns = `minmax(0, ${botRatio}fr) minmax(0, ${1 - botRatio}fr)`;
+        }
+        const vRatio = parseFloat(localStorage.getItem(STORAGE_PANEL_RATIO_VERT));
+        if (Number.isFinite(vRatio) && vRatio > 0.1 && vRatio < 0.9) {
+            const top = document.querySelector('.app-shell');
+            const bot = document.getElementById('premiereBottomZone');
+            if (top && bot) {
+                top.style.flex = `${vRatio} 1 0`;
+                bot.style.flex = `${1 - vRatio} 1 0`;
+            }
+        }
+    }
+}
+
+function addHorizontalResizer({ getContainer, getCols, storageKey, designFilter }) {
+    const handle = document.createElement('div');
+    handle.className = 'panel-resizer panel-resizer-horizontal';
+    handle.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(handle);
+
+    function update() {
+        if (!designFilter()) {
+            handle.style.display = 'none';
+            return;
+        }
+        const c = getContainer();
+        const cols = c ? getCols() : null;
+        if (!c || !cols || !cols[0] || !cols[1]) {
+            handle.style.display = 'none';
+            return;
+        }
+        const r1 = cols[0].getBoundingClientRect();
+        const r2 = cols[1].getBoundingClientRect();
+        if (r1.width === 0 || r2.width === 0) {
+            handle.style.display = 'none';
+            return;
+        }
+        const x = r1.right;
+        const top = Math.min(r1.top, r2.top);
+        const bottom = Math.max(r1.bottom, r2.bottom);
+        handle.style.display = 'block';
+        handle.style.left = `${x - 3}px`;
+        handle.style.top = `${top}px`;
+        handle.style.height = `${bottom - top}px`;
+    }
+
+    function attachDrag() {
+        let dragging = false;
+        let startX = 0;
+        let startRatio = 0.5;
+        let containerWidth = 0;
+        let containerLeft = 0;
+
+        handle.addEventListener('pointerdown', (e) => {
+            const c = getContainer();
+            const cols = getCols();
+            if (!c || !cols) return;
+            dragging = true;
+            startX = e.clientX;
+            const cRect = c.getBoundingClientRect();
+            containerWidth = cRect.width;
+            containerLeft = cRect.left;
+            const r1 = cols[0].getBoundingClientRect();
+            startRatio = r1.width / containerWidth;
+            handle.setPointerCapture?.(e.pointerId);
+            handle.classList.add('is-dragging');
+            document.body.classList.add('is-resizing');
+            e.preventDefault();
+        });
+
+        handle.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            const c = getContainer();
+            if (!c) return;
+            const newRatio = Math.max(0.1, Math.min(0.9, (e.clientX - containerLeft) / containerWidth));
+            c.style.gridTemplateColumns = `minmax(0, ${newRatio}fr) minmax(0, ${1 - newRatio}fr)`;
+            update();
+            renderPremiereTimeline();
+        });
+
+        function endDrag(e) {
+            if (!dragging) return;
+            dragging = false;
+            handle.releasePointerCapture?.(e.pointerId);
+            handle.classList.remove('is-dragging');
+            document.body.classList.remove('is-resizing');
+            const c = getContainer();
+            if (c) {
+                const cols = getCols();
+                if (cols && cols[0]) {
+                    const ratio = cols[0].getBoundingClientRect().width / c.getBoundingClientRect().width;
+                    localStorage.setItem(storageKey, String(ratio));
+                }
+            }
+        }
+        handle.addEventListener('pointerup', endDrag);
+        handle.addEventListener('pointercancel', endDrag);
+    }
+
+    attachDrag();
+
+    const ro = new ResizeObserver(update);
+    setTimeout(() => {
+        const c = getContainer();
+        if (c) ro.observe(c);
+        update();
+    }, 100);
+    window.addEventListener('resize', update);
+
+    // 디자인 전환 시 갱신
+    new MutationObserver(update).observe(document.documentElement, { attributes: true, attributeFilter: ['data-design', 'data-theme'] });
+}
+
+function addVerticalResizer({ getContainer, getRows, storageKey, designFilter }) {
+    const handle = document.createElement('div');
+    handle.className = 'panel-resizer panel-resizer-vertical';
+    handle.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(handle);
+
+    function update() {
+        if (!designFilter()) {
+            handle.style.display = 'none';
+            return;
+        }
+        const rows = getRows();
+        if (!rows || !rows[0] || !rows[1]) {
+            handle.style.display = 'none';
+            return;
+        }
+        const r1 = rows[0].getBoundingClientRect();
+        const r2 = rows[1].getBoundingClientRect();
+        if (r1.height === 0 || r2.height === 0) {
+            handle.style.display = 'none';
+            return;
+        }
+        const left = Math.min(r1.left, r2.left);
+        const right = Math.max(r1.right, r2.right);
+        handle.style.display = 'block';
+        handle.style.top = `${r1.bottom - 3}px`;
+        handle.style.left = `${left}px`;
+        handle.style.width = `${right - left}px`;
+    }
+
+    function attachDrag() {
+        let dragging = false;
+        let startY = 0;
+        let containerHeight = 0;
+        let containerTop = 0;
+
+        handle.addEventListener('pointerdown', (e) => {
+            const rows = getRows();
+            if (!rows || !rows[0] || !rows[1]) return;
+            dragging = true;
+            startY = e.clientY;
+            const r1 = rows[0].getBoundingClientRect();
+            const r2 = rows[1].getBoundingClientRect();
+            containerTop = r1.top;
+            containerHeight = (r2.bottom - r1.top);
+            handle.setPointerCapture?.(e.pointerId);
+            handle.classList.add('is-dragging');
+            document.body.classList.add('is-resizing');
+            e.preventDefault();
+        });
+
+        handle.addEventListener('pointermove', (e) => {
+            if (!dragging) return;
+            const rows = getRows();
+            if (!rows) return;
+            const newRatio = Math.max(0.15, Math.min(0.85, (e.clientY - containerTop) / containerHeight));
+            rows[0].style.flex = `${newRatio} 1 0`;
+            rows[1].style.flex = `${1 - newRatio} 1 0`;
+            update();
+            renderPremiereTimeline();
+        });
+
+        function endDrag(e) {
+            if (!dragging) return;
+            dragging = false;
+            handle.releasePointerCapture?.(e.pointerId);
+            handle.classList.remove('is-dragging');
+            document.body.classList.remove('is-resizing');
+            const rows = getRows();
+            if (rows && rows[0] && rows[1]) {
+                const r1 = rows[0].getBoundingClientRect();
+                const r2 = rows[1].getBoundingClientRect();
+                const total = r2.bottom - r1.top;
+                if (total > 0) {
+                    localStorage.setItem(storageKey, String(r1.height / total));
+                }
+            }
+        }
+        handle.addEventListener('pointerup', endDrag);
+        handle.addEventListener('pointercancel', endDrag);
+    }
+
+    attachDrag();
+
+    const ro = new ResizeObserver(update);
+    setTimeout(() => {
+        const c = getContainer();
+        if (c) ro.observe(c);
+        update();
+    }, 100);
+    window.addEventListener('resize', update);
+    new MutationObserver(update).observe(document.documentElement, { attributes: true, attributeFilter: ['data-design', 'data-theme'] });
+}

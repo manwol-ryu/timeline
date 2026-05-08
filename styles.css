@@ -433,6 +433,68 @@ body.is-video-expanded {
     color: var(--danger);
 }
 
+.video-loading-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 0 0 0;
+}
+
+.video-loading-progress-bar {
+    height: 8px;
+    background: var(--panel-muted);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    overflow: hidden;
+    position: relative;
+}
+
+.video-loading-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+    border-radius: 999px;
+    transition: width 0.2s ease;
+}
+
+.video-loading-progress-fill.is-indeterminate {
+    width: 35% !important;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: videoLoadingShimmer 1.6s linear infinite;
+}
+
+@keyframes videoLoadingShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(286%); }
+}
+
+.video-loading-progress-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.78rem;
+    color: var(--text-subtle);
+    font-variant-numeric: tabular-nums;
+}
+
+.file-thumbnail-wrap {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border-radius: clamp(10px, 0.8vw, 14px);
+    overflow: hidden;
+    background: #0b1220;
+    border: 1px solid var(--border-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.file-thumbnail {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
 .video-info {
     display: grid;
     grid-template-columns: auto 1fr;
@@ -1457,13 +1519,13 @@ textarea {
 
 /* ─── App shell: 상단 영상+메모, 1px 갭으로 패널 라인 효과 ─── */
 [data-design="premiere"] .app-shell {
-    flex: 1.55 1 0;
+    flex: 1.8 1 0;
     margin: 0;
     max-width: none;
     width: 100%;
     height: auto;
     display: grid;
-    grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
     grid-template-rows: 1fr;
     align-items: stretch;
     gap: 1px;
@@ -1587,14 +1649,9 @@ textarea {
     background: #000;
 }
 
-/* 비디오 패널 안의 quick-buttons (현재 장면 메모 추가) — Premiere 트랜스포트 바 자리 */
+/* 비디오 패널 안의 quick-buttons — Premiere 모드에선 quickAddMemo를 saveSegment 옆으로 옮겨 비어있으므로 숨김 */
 [data-design="premiere"] .video-panel > .quick-buttons {
-    margin: 0;
-    padding: 6px 10px;
-    background: var(--premiere-toolbar-bg);
-    border-top: 1px solid var(--border-strong);
-    justify-content: flex-end;
-    flex-shrink: 0;
+    display: none;
 }
 
 /* 컴팩트 인라인 타임라인 — 프리미어 모드에선 큰 타임라인이 하단으로 옮겨가므로 숨김 */
@@ -1966,8 +2023,163 @@ textarea {
     display: flex;
     align-items: center;
     padding: 0 8px;
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
+}
+
+[data-design="premiere"] .premiere-tl-export {
+    height: 24px !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 2px !important;
+    cursor: pointer;
+}
+
+[data-design="premiere"] .premiere-tl-zoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 4px;
+    border-left: 1px solid var(--border-strong);
+    margin-left: auto;
+}
+
+[data-design="premiere"] .premiere-tl-zoom-btn {
+    height: 22px !important;
+    min-width: 24px;
+    padding: 0 6px !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    border-radius: 2px !important;
+    line-height: 1;
+}
+
+[data-design="premiere"] .premiere-tl-zoom-slider {
+    width: 110px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--premiere-bg-input);
+    border-radius: 2px;
+    outline: none;
+    border: 1px solid var(--border-strong);
+}
+
+[data-design="premiere"] .premiere-tl-zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 1px solid var(--accent-strong);
+}
+
+[data-design="premiere"] .premiere-tl-zoom-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 1px solid var(--accent-strong);
+}
+
+[data-design="premiere"] .premiere-tl-zoom-level {
+    font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 10px;
+    color: var(--text-subtle);
+    min-width: 60px;
+    text-align: right;
+}
+
+[data-design="premiere"] .premiere-tl-track-color-dot {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.5);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+}
+
+/* 클립 양옆 리사이즈 핸들 */
+[data-design="premiere"] .premiere-tl-clip-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 6px;
+    cursor: ew-resize;
+    background: rgba(0, 0, 0, 0.001);
+    z-index: 2;
+}
+
+[data-design="premiere"] .premiere-tl-clip-handle:hover {
+    background: rgba(255, 255, 255, 0.25);
+}
+
+[data-design="premiere"] .premiere-tl-clip-handle-left {
+    left: 0;
+}
+
+[data-design="premiere"] .premiere-tl-clip-handle-right {
+    right: 0;
+}
+
+[data-design="premiere"] .premiere-tl-clip {
+    cursor: grab;
+    user-select: none;
+}
+
+[data-design="premiere"] .premiere-tl-clip.is-dragging {
+    cursor: grabbing;
+    opacity: 0.85;
+    box-shadow: 0 0 0 2px var(--accent);
+    z-index: 8;
+}
+
+[data-design="premiere"] .premiere-tl-clip.v1-clip {
+    cursor: default;
+}
+
+/* 패널 리사이저 */
+.panel-resizer {
+    position: fixed;
+    z-index: 60;
+    background: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.12s ease;
+    display: none;
+}
+
+.panel-resizer-horizontal {
+    width: 6px;
+    cursor: col-resize;
+}
+
+.panel-resizer-vertical {
+    height: 6px;
+    cursor: row-resize;
+}
+
+.panel-resizer:hover,
+.panel-resizer.is-dragging {
+    background: var(--accent);
+    opacity: 0.6;
+}
+
+body.is-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+body.is-resizing * {
+    pointer-events: none !important;
+}
+
+body.is-resizing .panel-resizer {
+    pointer-events: auto !important;
 }
 
 [data-design="premiere"] .premiere-tl-import {
@@ -2064,10 +2276,10 @@ textarea {
 
 /* 트랙 캔버스 (룰러 + 트랙들) — 스크롤은 부모가 담당 */
 [data-design="premiere"] .premiere-tl-canvas {
-    flex: 1;
+    flex: 0 0 auto;
     position: relative;
     background: var(--premiere-bg-track);
-    min-width: 0;
+    min-width: max(100%, 200px);
     align-self: stretch;
     display: flex;
     flex-direction: column;
