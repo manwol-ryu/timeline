@@ -287,7 +287,6 @@ body {
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    pointer-events: none;
 }
 
 .gesture-overlay.is-disabled {
@@ -297,12 +296,6 @@ body {
 .gesture-zone {
     flex: 1;
     cursor: pointer;
-    position: relative;
-    pointer-events: auto;
-}
-
-.gesture-zone-center {
-    flex: 0 0 30%;
     position: relative;
 }
 
