@@ -2071,15 +2071,6 @@ function initFullscreen() {
     function setExpanded(expanded) {
         videoFrame.classList.toggle('is-expanded', expanded);
         document.body.classList.toggle('is-video-expanded', expanded);
-        if (expanded) {
-            video.setAttribute('controlsList', 'nofullscreen noremoteplayback nodownload noplaybackrate');
-            video.setAttribute('disablepictureinpicture', '');
-            video.setAttribute('disableremoteplayback', '');
-        } else {
-            video.removeAttribute('controlsList');
-            video.removeAttribute('disablepictureinpicture');
-            video.removeAttribute('disableremoteplayback');
-        }
         syncButtonState();
     }
 
@@ -2240,12 +2231,6 @@ function initGestures() {
         lastTapTime = now;
         lastTapZone = zone;
         clearTimeout(singleTapTimer);
-        // CSS 확대 모드에서는 싱글탭으로 재생/정지를 토글하지 않는다.
-        // 더블탭(±10초)/길게 누르기(2배속)를 시도할 때 의도치 않게 토글되는 것을 방지.
-        // 더블탭 판정은 위 lastTapTime/lastTapZone 비교에서 그대로 동작.
-        if (videoFrame.classList.contains('is-expanded')) {
-            return;
-        }
         singleTapTimer = setTimeout(() => {
             togglePlay();
             lastTapTime = 0;
