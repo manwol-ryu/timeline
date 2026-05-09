@@ -287,7 +287,6 @@ body {
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    pointer-events: none;
 }
 
 .gesture-overlay.is-disabled {
@@ -298,12 +297,139 @@ body {
     flex: 1;
     cursor: pointer;
     position: relative;
+}
+
+/* CSS 확대 모드에서는 네이티브 컨트롤을 숨기고 커스텀 바를 쓰므로
+   제스처 오버레이를 바닥까지 확장해 화면 전 영역에서 탭 인식 */
+.video-frame.is-expanded .gesture-overlay {
+    bottom: 0;
+}
+
+/* 커스텀 컨트롤 바 — CSS 확대 모드 전용 */
+.custom-controls-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 56px;
+    padding: 0 16px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    color: #fff;
+    z-index: 4;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    background: transparent;
+}
+
+.video-frame.is-expanded .custom-controls-bar {
+    display: flex;
+}
+
+.custom-controls-bar.is-visible {
+    opacity: 1;
+}
+
+/* 인터랙티브 자식만 visible 시 이벤트 캐치 — 빈 영역은 통과시켜
+   gesture-zone에서 토글 처리 가능 */
+.custom-controls-bar.is-visible .custom-controls-btn,
+.custom-controls-bar.is-visible .custom-controls-scrubber {
     pointer-events: auto;
 }
 
-.gesture-zone-center {
-    flex: 0 0 30%;
-    position: relative;
+.custom-controls-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.custom-controls-btn svg {
+    width: 22px;
+    height: 22px;
+    fill: #fff;
+    pointer-events: none;
+}
+
+.custom-controls-bar .custom-icon-pause {
+    display: none;
+}
+
+.custom-controls-bar.is-playing .custom-icon-play {
+    display: none;
+}
+
+.custom-controls-bar.is-playing .custom-icon-pause {
+    display: block;
+}
+
+.custom-controls-time {
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+    min-width: 44px;
+    text-align: center;
+}
+
+.custom-controls-scrubber {
+    flex: 1;
+    height: 22px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+}
+
+.custom-controls-scrubber::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.custom-controls-scrubber::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.35);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.custom-controls-scrubber::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    margin-top: -6px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+}
+
+.custom-controls-scrubber::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
 }
 
 .gesture-indicator {
