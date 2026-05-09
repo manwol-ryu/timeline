@@ -779,6 +779,7 @@ function isInStandalone() {
     return false;
 }
 const LARGE_FILE_WARNING_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+const IOS_IN_BROWSER_FASTSTART_MAX_BYTES = 2 * 1024 * 1024 * 1024; // iPad Safari에서 큰 가상 Blob 생성을 피하는 안전선
 const SLOW_LOAD_THRESHOLD_MS = 15000;
 let videoLoadingTimer = null;
 let videoLoadingStartedAt = 0;
@@ -1616,6 +1617,26 @@ function looksLikeMp4(file) {
     return false;
 }
 
+function formatFileSize(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0MB';
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return `${gb.toFixed(1)}GB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
+function shouldSkipInBrowserFaststart(file) {
+    // iPadOS Safari는 대용량 File 조각을 다시 합친 가상 Blob을 video.src로
+    // 등록하는 단계에서 멈추거나 실패하는 경우가 있어, 큰 파일은 원본 URL만
+    // 붙이고 외부 faststart/압축 변환을 안내한다.
+    return isIOS() && file && file.size > IOS_IN_BROWSER_FASTSTART_MAX_BYTES;
+}
+
+function shouldDeferAutoPlay(file) {
+    // iPadOS에서 11GB 같은 파일은 metadata 확인 전에 play()를 걸면
+    // 불필요한 버퍼링/디코딩이 시작되어 더 빨리 실패할 수 있다.
+    return isIOS() && file && file.size > LARGE_FILE_WARNING_BYTES;
+}
+
 // 단일 박스 헤더 파싱: [4B size][4B type][optional 8B large size]
 function parseBoxHeader(view, offset) {
     if (offset + 8 > view.byteLength) return null;
@@ -1789,6 +1810,14 @@ async function getVideoBlobUrl(file) {
     if (!getAutoFaststart() || !looksLikeMp4(file)) {
         return { url: URL.createObjectURL(file), faststart: false };
     }
+    if (shouldSkipInBrowserFaststart(file)) {
+        setVideoLoadingStatus('ios-faststart-skipped', formatFileSize(file.size));
+        return {
+            url: URL.createObjectURL(file),
+            faststart: false,
+            status: 'ios-faststart-skipped'
+        };
+    }
     try {
         setVideoLoadingStatus('faststart-analyzing');
         const url = await makeFaststartBlobUrl(file);
@@ -1875,6 +1904,7 @@ function isIOS() {
 
 function setVideoLoadingStatus(state, extra = '') {
     if (!videoLoadingStatus) return;
+    videoLoadingStatus.dataset.state = state || '';
     videoLoadingStatus.classList.remove('is-warning', 'is-error');
     switch (state) {
         case 'faststart-analyzing':
@@ -1896,6 +1926,10 @@ function setVideoLoadingStatus(state, extra = '') {
             break;
         case 'large-file':
             videoLoadingStatus.textContent = `⚠️ ${extra} - 큰 파일은 메타데이터 위치(moov atom)에 따라 로딩이 매우 느릴 수 있습니다.`;
+            videoLoadingStatus.classList.add('is-warning');
+            break;
+        case 'ios-faststart-skipped':
+            videoLoadingStatus.textContent = `⚠️ ${extra} 영상은 iPad에서는 브라우저 안에서 faststart를 가상 적용하지 않습니다. 파일은 등록했지만, 재생이 안 되면 데스크톱에서 H.264/AAC MP4 + -movflags +faststart로 변환하거나 2GB 이하로 분할해주세요.`;
             videoLoadingStatus.classList.add('is-warning');
             break;
         case 'ios-warning':
@@ -1920,8 +1954,12 @@ function setVideoLoadingStatus(state, extra = '') {
 function initVideoEvents() {
     video.addEventListener('loadstart', () => {
         clearTimeout(videoLoadingTimer);
+        const keepCurrentStatus = videoLoadingStatus?.dataset.state === 'ios-faststart-skipped';
         if (video.src) {
             showVideoLoadingProgress();
+        }
+        if (keepCurrentStatus) {
+            return;
         }
         if (selectedFileSize > LARGE_FILE_WARNING_BYTES) {
             const sizeText = `${(selectedFileSize / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -2388,11 +2426,20 @@ function initControls() {
         const isDifferentFile = selectedFileName && selectedFileName !== file.name;
         if (isDifferentFile && segments.length > 0) {
             if (!confirm(`다른 영상을 선택하셨습니다. "${selectedFileName}"의 타임라인을 저장하고 "${file.name}"의 타임라인을 불러올까요?`)) {
+                videoInput.value = '';
                 return;
             }
         }
 
         updateFileInfo(file);
+
+        // 해당 파일의 타임라인은 영상 URL 생성 성공 여부와 분리해서 먼저 등록한다.
+        const loaded = loadFromLocalStorage(file.name);
+        if (!loaded) {
+            segments = [];
+            totalDuration = 0;
+            renderAll();
+        }
 
         // iOS에서 큰 파일이거나 MP4의 moov atom이 끝에 있을 가능성이 있다면 미리 경고
         // (faststart 자동 적용이 꺼진 경우에만 경고만 출력)
@@ -2410,31 +2457,39 @@ function initControls() {
         // 다음 비디오 에러 발생 시 원본으로 fallback 가능하도록 파일 보관
         currentLoadedFile = file;
 
-        // faststart 적용된 URL 또는 원본 URL을 받음
-        const { url, faststart } = await getVideoBlobUrl(file);
-        currentLoadedFaststartActive = faststart;
-        if (currentVideoUrl) {
-            URL.revokeObjectURL(currentVideoUrl);
-        }
-        currentVideoUrl = url;
-        video.src = url;
-        video.load();
-        if (faststart) {
-            setVideoLoadingStatus('faststart-applied');
-        }
+        try {
+            // faststart 적용된 URL 또는 원본 URL을 받음
+            const { url, faststart, status } = await getVideoBlobUrl(file);
+            currentLoadedFaststartActive = faststart;
+            if (currentVideoUrl) {
+                URL.revokeObjectURL(currentVideoUrl);
+            }
+            currentVideoUrl = url;
+            video.src = url;
+            video.load();
+            if (faststart) {
+                setVideoLoadingStatus('faststart-applied');
+            } else if (status === 'ios-faststart-skipped') {
+                // video.load()의 loadstart가 큰 파일 일반 경고로 덮어쓸 수 있어
+                // iPad 전용 안내를 다시 표시한다.
+                setVideoLoadingStatus('ios-faststart-skipped', formatFileSize(file.size));
+            }
 
-        // 해당 파일의 타임라인 불러오기
-        const loaded = loadFromLocalStorage(file.name);
-        if (!loaded) {
-            segments = [];
-            renderAll();
-        }
-
-        const playPromise = video.play();
-        if (playPromise && typeof playPromise.then === 'function') {
-            playPromise.catch(() => {
-                // iOS/iPadOS에서는 사용자 제스처 후에도 재생이 막힐 수 있음 - 컨트롤로 직접 시작 가능
-            });
+            if (!shouldDeferAutoPlay(file)) {
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.then === 'function') {
+                    playPromise.catch(() => {
+                        // iOS/iPadOS에서는 사용자 제스처 후에도 재생이 막힐 수 있음 - 컨트롤로 직접 시작 가능
+                    });
+                }
+            }
+        } catch (err) {
+            console.error('영상 URL 생성 실패:', err);
+            currentLoadedFaststartActive = false;
+            currentLoadedFile = null;
+            setVideoLoadingStatus('error');
+        } finally {
+            videoInput.value = '';
         }
     });
 
