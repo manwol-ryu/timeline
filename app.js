@@ -2046,6 +2046,126 @@ function captureVideoThumbnail() {
     }
 }
 
+// CSS 확대 모드 전용 커스텀 컨트롤 바.
+// 외부(setExpanded, handleZoneInteraction)에서 호출할 수 있도록 모듈 객체를 노출.
+const customControls = {
+    show: () => {},
+    hide: () => {},
+    toggle: () => {},
+    isVisible: () => false,
+};
+
+function initCustomControls() {
+    const bar = document.getElementById('customControlsBar');
+    const playBtn = document.getElementById('customPlayPauseBtn');
+    const scrubber = document.getElementById('customScrubber');
+    const currentTimeEl = document.getElementById('customCurrentTime');
+    const totalTimeEl = document.getElementById('customTotalTime');
+    if (!bar || !playBtn || !scrubber || !currentTimeEl || !totalTimeEl) return;
+
+    let isScrubbing = false;
+    let hideTimer = null;
+    const AUTO_HIDE_MS = 3000;
+
+    function clearHideTimer() {
+        if (hideTimer) {
+            clearTimeout(hideTimer);
+            hideTimer = null;
+        }
+    }
+
+    function scheduleAutoHide() {
+        clearHideTimer();
+        if (!video.paused && bar.classList.contains('is-visible') && !isScrubbing) {
+            hideTimer = setTimeout(() => bar.classList.remove('is-visible'), AUTO_HIDE_MS);
+        }
+    }
+
+    function show() {
+        bar.classList.add('is-visible');
+        scheduleAutoHide();
+    }
+
+    function hide() {
+        bar.classList.remove('is-visible');
+        clearHideTimer();
+    }
+
+    function toggle() {
+        if (bar.classList.contains('is-visible')) hide();
+        else show();
+    }
+
+    function isVisible() {
+        return bar.classList.contains('is-visible');
+    }
+
+    function syncPlayState() {
+        bar.classList.toggle('is-playing', !video.paused);
+    }
+
+    function syncTime() {
+        if (isScrubbing) return;
+        const cur = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+        const dur = Number.isFinite(video.duration) ? video.duration : 0;
+        currentTimeEl.textContent = formatTime(cur);
+        totalTimeEl.textContent = dur > 0 ? formatTime(dur) : '--:--';
+        if (dur > 0) {
+            scrubber.max = String(dur);
+        }
+        scrubber.value = String(cur);
+    }
+
+    playBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!video.src) return;
+        if (video.paused) {
+            video.play().catch(() => {});
+        } else {
+            video.pause();
+        }
+        scheduleAutoHide();
+    });
+
+    scrubber.addEventListener('pointerdown', () => {
+        isScrubbing = true;
+        clearHideTimer();
+    });
+    scrubber.addEventListener('input', () => {
+        const val = parseFloat(scrubber.value);
+        if (Number.isFinite(val)) {
+            currentTimeEl.textContent = formatTime(val);
+        }
+    });
+    scrubber.addEventListener('change', () => {
+        const val = parseFloat(scrubber.value);
+        if (Number.isFinite(val)) {
+            video.currentTime = val;
+        }
+        isScrubbing = false;
+        scheduleAutoHide();
+    });
+    scrubber.addEventListener('pointerup', () => {
+        // change 이벤트가 안 온 경우 대비
+        isScrubbing = false;
+        scheduleAutoHide();
+    });
+
+    video.addEventListener('play', () => { syncPlayState(); scheduleAutoHide(); });
+    video.addEventListener('pause', () => { syncPlayState(); clearHideTimer(); });
+    video.addEventListener('timeupdate', syncTime);
+    video.addEventListener('durationchange', syncTime);
+    video.addEventListener('loadedmetadata', syncTime);
+
+    customControls.show = show;
+    customControls.hide = hide;
+    customControls.toggle = toggle;
+    customControls.isVisible = isVisible;
+
+    syncPlayState();
+    syncTime();
+}
+
 function initFullscreen() {
     if (!fullscreenButton) return;
 
@@ -2071,6 +2191,16 @@ function initFullscreen() {
     function setExpanded(expanded) {
         videoFrame.classList.toggle('is-expanded', expanded);
         document.body.classList.toggle('is-video-expanded', expanded);
+        if (expanded) {
+            // 확대 모드: 네이티브 컨트롤(중앙 ▶ + 디밍 + PiP/AirPlay/풀스크린 버튼)을
+            // 모두 끄고 우리가 만든 커스텀 바만 사용.
+            video.removeAttribute('controls');
+            customControls.hide();
+        } else {
+            // 일반 모드: 네이티브 컨트롤 복원, 커스텀 바 숨김
+            video.setAttribute('controls', '');
+            customControls.hide();
+        }
         syncButtonState();
     }
 
@@ -2211,12 +2341,18 @@ function initGestures() {
     function handleZoneInteraction(zone, clientX, clientY) {
         const now = Date.now();
         const isDoubleTap = (now - lastTapTime < DOUBLE_TAP_DELAY) && lastTapZone === zone;
+        const isExpanded = videoFrame.classList.contains('is-expanded');
 
         if (isDoubleTap) {
             clearTimeout(singleTapTimer);
             singleTapTimer = null;
             lastTapTime = 0;
             lastTapZone = null;
+
+            // 더블탭 시 커스텀 컨트롤 바는 즉시 숨김 (확대 모드 전용)
+            if (isExpanded) {
+                customControls.hide();
+            }
 
             if (zone === 'left') {
                 safeSeek(-SEEK_SECONDS);
@@ -2231,6 +2367,19 @@ function initGestures() {
         lastTapTime = now;
         lastTapZone = zone;
         clearTimeout(singleTapTimer);
+
+        if (isExpanded) {
+            // 확대 모드: 싱글탭은 커스텀 컨트롤 바 토글.
+            // DOUBLE_TAP_DELAY 후에 발동시켜 더블탭 가능성을 우선 확인.
+            singleTapTimer = setTimeout(() => {
+                customControls.toggle();
+                lastTapTime = 0;
+                lastTapZone = null;
+            }, DOUBLE_TAP_DELAY);
+            return;
+        }
+
+        // 미확대 모드: 기존 동작 — 싱글탭으로 재생/정지 토글
         singleTapTimer = setTimeout(() => {
             togglePlay();
             lastTapTime = 0;
@@ -2606,6 +2755,7 @@ initVideoEvents();
 initControls();
 initSettings();
 initGestures();
+initCustomControls();
 initFullscreen();
 initResizers();
 initPremiereTimelineKeyboard();

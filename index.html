@@ -219,6 +219,19 @@
                         <div id="gestureIndicator" class="gesture-indicator"></div>
                         <div id="speedIndicator" class="speed-indicator">2x</div>
                     </div>
+                    <div id="customControlsBar" class="custom-controls-bar" aria-hidden="true">
+                        <button id="customPlayPauseBtn" class="custom-controls-btn" type="button" aria-label="재생/일시정지">
+                            <svg class="custom-icon-play" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M8 5v14l11-7z"/>
+                            </svg>
+                            <svg class="custom-icon-pause" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                            </svg>
+                        </button>
+                        <span id="customCurrentTime" class="custom-controls-time">00:00</span>
+                        <input type="range" id="customScrubber" class="custom-controls-scrubber" min="0" max="0" step="0.01" value="0" aria-label="재생 위치">
+                        <span id="customTotalTime" class="custom-controls-time">--:--</span>
+                    </div>
                     <button id="fullscreenButton" class="player-fab" type="button" aria-label="전체화면 보기">
                         <svg id="fullscreenIconEnter" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                             <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
