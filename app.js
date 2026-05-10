@@ -2338,6 +2338,22 @@ function initGestures() {
         }
     }
 
+    function toggleNativeControlsBar() {
+        if (!video.src) return;
+        if (video.hasAttribute('controls')) {
+            video.removeAttribute('controls');
+        } else {
+            video.setAttribute('controls', '');
+        }
+    }
+
+    function hideNativeControlsBar() {
+        if (!video.src) return;
+        if (video.hasAttribute('controls')) {
+            video.removeAttribute('controls');
+        }
+    }
+
     function handleZoneInteraction(zone, clientX, clientY) {
         const now = Date.now();
         const isDoubleTap = (now - lastTapTime < DOUBLE_TAP_DELAY) && lastTapZone === zone;
@@ -2349,9 +2365,11 @@ function initGestures() {
             lastTapTime = 0;
             lastTapZone = null;
 
-            // 더블탭 시 커스텀 컨트롤 바는 즉시 숨김 (확대 모드 전용)
+            // 더블탭 시 어떤 모드든 컨트롤 바를 즉시 숨김
             if (isExpanded) {
                 customControls.hide();
+            } else {
+                hideNativeControlsBar();
             }
 
             if (zone === 'left') {
@@ -2379,9 +2397,10 @@ function initGestures() {
             return;
         }
 
-        // 미확대 모드: 기존 동작 — 싱글탭으로 재생/정지 토글
+        // 미확대 모드: 싱글탭은 네이티브 컨트롤 바(어두워지며 뜨는 iOS 기본 바)를
+        // 토글. 재생/정지 토글은 하지 않는다 (네이티브 바의 재생 버튼으로 조작).
         singleTapTimer = setTimeout(() => {
-            togglePlay();
+            toggleNativeControlsBar();
             lastTapTime = 0;
             lastTapZone = null;
         }, DOUBLE_TAP_DELAY);
