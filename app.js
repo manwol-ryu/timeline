@@ -2415,6 +2415,7 @@ function initGestures() {
     const LONG_PRESS_DELAY = 360;
     const SEEK_SECONDS = 10;
     const SPEED_MULTIPLIER = 2;
+    const RATE_RESTORE_DELAY = 140;
 
     let lastTapTime = 0;
     let lastTapZone = null;
@@ -2428,6 +2429,23 @@ function initGestures() {
     let pressMoved = false;
     let indicatorTimer = null;
     const activePointers = new Set();
+    let pendingRateRestoreTimer = null;
+
+    function enablePitchPreservation() {
+        // 브라우저별 음정 보존 플래그를 모두 켠다.
+        // (Safari: webkitPreservesPitch, Firefox: mozPreservesPitch)
+        const pitchProps = ['preservesPitch', 'webkitPreservesPitch', 'mozPreservesPitch'];
+        pitchProps.forEach((prop) => {
+            if (prop in video) {
+                try { video[prop] = true; } catch (_) {}
+            }
+        });
+    }
+
+    // 초기/소스 변경 시마다 음정 보존 상태를 강제
+    enablePitchPreservation();
+    video.addEventListener('loadedmetadata', enablePitchPreservation);
+    video.addEventListener('ratechange', enablePitchPreservation);
 
     function showIndicator(text, side) {
         if (!indicator) return;
@@ -2566,11 +2584,18 @@ function initGestures() {
         }
     }
 
+    function cancelPendingRateRestore() {
+        if (!pendingRateRestoreTimer) return;
+        clearTimeout(pendingRateRestoreTimer);
+        pendingRateRestoreTimer = null;
+    }
+
     function startLongPress() {
         clearTimeout(longPressTimer);
         longPressTimer = setTimeout(() => {
             if (pressMoved) return;
             if (!video.src || !Number.isFinite(video.duration)) return;
+            cancelPendingRateRestore();
             originalRate = video.playbackRate || 1;
             wasPausedAtLongPressStart = video.paused;
             // 가장 비싼 작업(rate 변경)을 가장 먼저, 다른 작업과 분리해 호출 —
@@ -2593,13 +2618,21 @@ function initGestures() {
 
     function endLongPress() {
         if (isLongPressing) {
-            setPlaybackRateIfChanged(originalRate || 1);
             isLongPressing = false;
             hideSpeedIndicator();
             // 배속 시작 전에 일시정지 상태였다면 손을 떼는 순간 원 상태로 복원.
             if (wasPausedAtLongPressStart && !video.paused) {
                 video.pause();
             }
+            // 손을 떼자마자 바로 원복하지 않고 약간 지연시켜
+            // 빠른 재-롱프레스 시 1x↔2x 재전환에 따른 끊김을 줄인다.
+            cancelPendingRateRestore();
+            pendingRateRestoreTimer = setTimeout(() => {
+                requestAnimationFrame(() => {
+                    setPlaybackRateIfChanged(originalRate || 1);
+                    pendingRateRestoreTimer = null;
+                });
+            }, RATE_RESTORE_DELAY);
         }
         clearTimeout(longPressTimer);
         longPressTimer = null;
