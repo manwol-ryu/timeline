@@ -1079,15 +1079,27 @@ function renderTimeline() {
     renderTimelineBar(timelineBarCompact, timelineEmptyCompact);
 }
 
+
+function normalizeSegment(segment) {
+    const normalized = {
+        ...segment,
+        id: segment.id || crypto.randomUUID(),
+        start: Number(segment.start),
+        end: Number(segment.end),
+        color: segment.color || DEFAULT_SEGMENT_COLOR,
+    };
+    normalized._searchIndex = [normalized.title, normalized.note, normalized.tag]
+        .map(value => String(value || '').toLowerCase())
+        .join(' ');
+    return normalized;
+}
+
 function renderSegments(filterText = '') {
     segmentsList.innerHTML = '';
     const keyword = filterText.trim().toLowerCase();
     const filtered = !keyword
         ? segments
-        : segments.filter(({ title, note, tag }) => {
-            const joined = [title, note, tag].join(' ').toLowerCase();
-            return joined.includes(keyword);
-        });
+        : segments.filter(segment => (segment._searchIndex || '').includes(keyword));
 
     if (filtered.length === 0) {
         segmentsEmpty.style.display = 'block';
@@ -1097,6 +1109,8 @@ function renderSegments(filterText = '') {
         return;
     }
     segmentsEmpty.style.display = 'none';
+
+    const fragment = document.createDocumentFragment();
 
     filtered.forEach(segment => {
         const card = document.createElement('article');
@@ -1164,8 +1178,10 @@ function renderSegments(filterText = '') {
         actions.append(jumpButton, editButton, deleteButton);
         card.appendChild(actions);
 
-        segmentsList.appendChild(card);
+        fragment.appendChild(card);
     });
+
+    segmentsList.appendChild(fragment);
 }
 
 function renderAll() {
@@ -1264,10 +1280,10 @@ function saveSegment() {
     const data = gatherFormData();
     if (!data) return;
     if (editingId) {
-        segments = segments.map(item => (item.id === editingId ? { ...item, ...data } : item));
+        segments = segments.map(item => (item.id === editingId ? normalizeSegment({ ...item, ...data }) : item));
         showFormStatus('수정 완료');
     } else {
-        segments.push(data);
+        segments.push(normalizeSegment(data));
         showFormStatus('메모 추가 완료');
     }
     finishEditing();
@@ -1349,13 +1365,9 @@ function importJsonFile(file) {
         try {
             const payload = JSON.parse(event.target.result);
             const importedSegments = Array.isArray(payload.segments) ? payload.segments : [];
-            segments = importedSegments.map(segment => ({
-                ...segment,
-                id: segment.id || crypto.randomUUID(),
-                start: Number(segment.start),
-                end: Number(segment.end),
-                color: segment.color || DEFAULT_SEGMENT_COLOR,
-            })).filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
+            segments = importedSegments
+                .map(normalizeSegment)
+                .filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
             if (typeof payload.duration === 'number' && Number.isFinite(payload.duration)) {
                 totalDuration = payload.duration;
             }
@@ -1422,13 +1434,9 @@ function loadFromLocalStorage(fileName) {
 
         // 세그먼트 데이터 복원
         if (Array.isArray(data.segments)) {
-            segments = data.segments.map(segment => ({
-                ...segment,
-                id: segment.id || crypto.randomUUID(),
-                start: Number(segment.start),
-                end: Number(segment.end),
-                color: segment.color || DEFAULT_SEGMENT_COLOR,
-            })).filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
+            segments = data.segments
+                .map(normalizeSegment)
+                .filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
         }
 
         // 영상 정보 복원
@@ -2770,13 +2778,17 @@ function initControls() {
             note: '',
         };
 
-        segments.push(data);
+        segments.push(normalizeSegment(data));
         showFormStatus('현재 장면 메모 추가 완료');
         resetForm();
         renderAll();
     });
 
-    searchInput.addEventListener('input', () => renderSegments(searchInput.value));
+    let searchDebounceTimer = null;
+    searchInput.addEventListener('input', () => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => renderSegments(searchInput.value), 120);
+    });
     copyNotesButton.addEventListener('click', copyNotes);
     exportTxtButton.addEventListener('click', exportTxt);
     exportJsonButton.addEventListener('click', exportJson);
