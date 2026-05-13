@@ -534,11 +534,22 @@ function openPremiereClipDetail(segId) {
     }
 }
 
+// timeupdate마다 호출되는 hot path. querySelector 두 번을 매 프레임마다
+// 새로 돌면 메인 쓰레드 부담이 누적돼, rate 변경 시 디코더와 메인 쓰레드가
+// 경쟁할 때 멈춤이 길어진다. DOM 노드를 캐시해 호출 비용을 최소화.
+let cachedPremierePlayhead = null;
+function getPremierePlayhead() {
+    if (cachedPremierePlayhead && cachedPremierePlayhead.isConnected) {
+        return cachedPremierePlayhead;
+    }
+    const view = document.getElementById('premiereTimelineView');
+    cachedPremierePlayhead = view ? view.querySelector('.premiere-tl-playhead') : null;
+    return cachedPremierePlayhead;
+}
+
 function updatePremierePlayhead() {
     if (!isPremiereDesign()) return;
-    const view = document.getElementById('premiereTimelineView');
-    if (!view) return;
-    const playhead = view.querySelector('.premiere-tl-playhead');
+    const playhead = getPremierePlayhead();
     if (!playhead) return;
     if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
         playhead.hidden = true;
@@ -1019,10 +1030,21 @@ function setActiveTab(target) {
     });
 }
 
+// totalDuration은 영상 로드 후 거의 변하지 않으므로 캐싱.
+let cachedTotalBadgeText = '--:--';
+let cachedTotalBadgeForDuration = NaN;
+let lastTimeBadgeText = '';
 function setTimeBadge() {
-    const current = formatTime(video.currentTime || 0);
-    const total = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
-    timeBadge.textContent = `${current} / ${total}`;
+    const cur = video.currentTime || 0;
+    if (cachedTotalBadgeForDuration !== totalDuration) {
+        cachedTotalBadgeText = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
+        cachedTotalBadgeForDuration = totalDuration;
+    }
+    const next = `${formatTime(cur)} / ${cachedTotalBadgeText}`;
+    // 같은 텍스트면 textContent 쓰기로 인한 paint 비용 생략.
+    if (next === lastTimeBadgeText) return;
+    lastTimeBadgeText = next;
+    timeBadge.textContent = next;
 }
 
 function renderTimelineBar(targetBar, emptyState) {
@@ -2082,7 +2104,26 @@ function initVideoEvents() {
         setVideoLoadingStatus('error');
     });
 
+    // timeupdate는 재생 중 약 4–10Hz로 발화하고, 2배속에서는 더 잦다.
+    // 핸들러마다 곧바로 DOM 작업을 하면 메인 쓰레드가 빈번히 점유돼
+    // rate 변경 시 디코더 작업과 경쟁한다. rAF로 묶어 한 paint에 한 번만
+    // 갱신해 같은 정보를 같은 비용으로 더 적은 부담으로 처리한다.
+    let timeUpdateRafId = 0;
+    function flushTimeUpdateUI() {
+        timeUpdateRafId = 0;
+        setTimeBadge();
+        updatePremierePlayhead();
+    }
     video.addEventListener('timeupdate', () => {
+        if (timeUpdateRafId) return;
+        timeUpdateRafId = requestAnimationFrame(flushTimeUpdateUI);
+    });
+    // 시킹/재개 직후에는 즉시 한 번 동기 갱신해 응답성 유지.
+    video.addEventListener('seeked', () => {
+        if (timeUpdateRafId) {
+            cancelAnimationFrame(timeUpdateRafId);
+            timeUpdateRafId = 0;
+        }
         setTimeBadge();
         updatePremierePlayhead();
     });
@@ -2169,16 +2210,35 @@ function initCustomControls() {
         bar.classList.toggle('is-playing', !video.paused);
     }
 
+    // dur과 totalTime 텍스트는 거의 변하지 않아 캐시.
+    let syncCachedDuration = NaN;
+    let syncCachedTotalText = '--:--';
+    let syncLastCurText = '';
     function syncTime() {
         if (isScrubbing) return;
         const cur = Number.isFinite(video.currentTime) ? video.currentTime : 0;
         const dur = Number.isFinite(video.duration) ? video.duration : 0;
-        currentTimeEl.textContent = formatTime(cur);
-        totalTimeEl.textContent = dur > 0 ? formatTime(dur) : '--:--';
-        if (dur > 0) {
-            scrubber.max = String(dur);
+        if (syncCachedDuration !== dur) {
+            syncCachedDuration = dur;
+            syncCachedTotalText = dur > 0 ? formatTime(dur) : '--:--';
+            totalTimeEl.textContent = syncCachedTotalText;
+            if (dur > 0) scrubber.max = String(dur);
+        }
+        const curText = formatTime(cur);
+        if (curText !== syncLastCurText) {
+            syncLastCurText = curText;
+            currentTimeEl.textContent = curText;
         }
         scrubber.value = String(cur);
+    }
+    // timeupdate에서 호출되는 syncTime을 rAF로 배치 — 메인 쓰레드 부담 분산.
+    let syncTimeRafId = 0;
+    function scheduleSyncTime() {
+        if (syncTimeRafId) return;
+        syncTimeRafId = requestAnimationFrame(() => {
+            syncTimeRafId = 0;
+            syncTime();
+        });
     }
 
     playBtn.addEventListener('click', (e) => {
@@ -2218,9 +2278,14 @@ function initCustomControls() {
 
     video.addEventListener('play', () => { syncPlayState(); scheduleAutoHide(); });
     video.addEventListener('pause', () => { syncPlayState(); clearHideTimer(); });
-    video.addEventListener('timeupdate', syncTime);
+    video.addEventListener('timeupdate', scheduleSyncTime);
     video.addEventListener('durationchange', syncTime);
     video.addEventListener('loadedmetadata', syncTime);
+    // 시킹/일시정지 등 응답성이 중요한 시점에는 즉시 동기화.
+    video.addEventListener('seeked', () => {
+        if (syncTimeRafId) { cancelAnimationFrame(syncTimeRafId); syncTimeRafId = 0; }
+        syncTime();
+    });
 
     customControls.show = show;
     customControls.hide = hide;
