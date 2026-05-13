@@ -2487,13 +2487,18 @@ function initGestures() {
         }, DOUBLE_TAP_DELAY);
     }
 
-    // 일부 브라우저(특히 iOS Safari)는 playbackRate 변경 시 오디오 피치 보정을
-    // 위해 디코더를 짧게 재동기화하면서 영상이 잠시 멈춘다. 2배속 진입/종료의
-    // 전후 멈춤을 줄이기 위해 배속 중에는 피치 보정을 끈다 (음 높이가 약간 올라감).
-    function setPreservesPitch(value) {
-        try { if ('preservesPitch' in video) video.preservesPitch = value; } catch (_) {}
-        try { if ('webkitPreservesPitch' in video) video.webkitPreservesPitch = value; } catch (_) {}
-        try { if ('mozPreservesPitch' in video) video.mozPreservesPitch = value; } catch (_) {}
+    // rate 변경 시 브라우저(특히 iOS Safari)는 음 높이 유지(preservesPitch)를
+    // 위해 오디오 리샘플러를 재구성하느라 짧게 멈춘다. 이 멈춤은 디코더 레벨이라
+    // JS에서 직접 제거할 수 없어, 변경량을 최소화하는 것이 우리가 할 수 있는 최선.
+    function setPlaybackRateIfChanged(newRate) {
+        const current = video.playbackRate || 1;
+        if (Math.abs(current - newRate) < 0.001) return true;
+        try {
+            video.playbackRate = newRate;
+            return true;
+        } catch (_) {
+            return false;
+        }
     }
 
     function startLongPress() {
@@ -2503,15 +2508,11 @@ function initGestures() {
             if (!video.src || !Number.isFinite(video.duration)) return;
             originalRate = video.playbackRate || 1;
             wasPausedAtLongPressStart = video.paused;
-            // 피치 보정을 먼저 끄고 rate 변경 — 변경 시점의 오디오 재동기화 비용을 줄임.
-            setPreservesPitch(false);
-            try {
-                video.playbackRate = SPEED_MULTIPLIER;
-            } catch (_) {
-                setPreservesPitch(true);
-                return;
-            }
+            // 가장 비싼 작업(rate 변경)을 가장 먼저, 다른 작업과 분리해 호출 —
+            // 메인 쓰레드 정체로 인한 추가 지연을 줄임. 같은 rate이면 no-op.
+            if (!setPlaybackRateIfChanged(SPEED_MULTIPLIER)) return;
             isLongPressing = true;
+            // 사용자가 "활성화됨" 신호를 빠르게 받도록 시각 지시자는 즉시.
             showSpeedIndicator();
             if (video.paused) {
                 video.play().catch(() => {});
@@ -2527,9 +2528,7 @@ function initGestures() {
 
     function endLongPress() {
         if (isLongPressing) {
-            try { video.playbackRate = originalRate || 1; } catch (_) {}
-            // rate 복원 후 피치 보정 다시 켬 (다음 일반 재생 시 원래대로).
-            setPreservesPitch(true);
+            setPlaybackRateIfChanged(originalRate || 1);
             isLongPressing = false;
             hideSpeedIndicator();
             // 배속 시작 전에 일시정지 상태였다면 손을 떼는 순간 원 상태로 복원.
