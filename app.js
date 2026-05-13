@@ -2345,7 +2345,9 @@ function initGestures() {
     if (!overlay) return;
 
     const DOUBLE_TAP_DELAY = 320;
-    const LONG_PRESS_DELAY = 450;
+    // 길게 누름 인식 시간. 더블탭(320ms)과 충돌하지 않으면서
+    // "꾹 누르자마자 2배속" 체감을 빠르게 하기 위해 짧게 잡는다.
+    const LONG_PRESS_DELAY = 360;
     const SEEK_SECONDS = 10;
     const SPEED_MULTIPLIER = 2;
 
@@ -2485,6 +2487,15 @@ function initGestures() {
         }, DOUBLE_TAP_DELAY);
     }
 
+    // 일부 브라우저(특히 iOS Safari)는 playbackRate 변경 시 오디오 피치 보정을
+    // 위해 디코더를 짧게 재동기화하면서 영상이 잠시 멈춘다. 2배속 진입/종료의
+    // 전후 멈춤을 줄이기 위해 배속 중에는 피치 보정을 끈다 (음 높이가 약간 올라감).
+    function setPreservesPitch(value) {
+        try { if ('preservesPitch' in video) video.preservesPitch = value; } catch (_) {}
+        try { if ('webkitPreservesPitch' in video) video.webkitPreservesPitch = value; } catch (_) {}
+        try { if ('mozPreservesPitch' in video) video.mozPreservesPitch = value; } catch (_) {}
+    }
+
     function startLongPress() {
         clearTimeout(longPressTimer);
         longPressTimer = setTimeout(() => {
@@ -2492,9 +2503,12 @@ function initGestures() {
             if (!video.src || !Number.isFinite(video.duration)) return;
             originalRate = video.playbackRate || 1;
             wasPausedAtLongPressStart = video.paused;
+            // 피치 보정을 먼저 끄고 rate 변경 — 변경 시점의 오디오 재동기화 비용을 줄임.
+            setPreservesPitch(false);
             try {
                 video.playbackRate = SPEED_MULTIPLIER;
             } catch (_) {
+                setPreservesPitch(true);
                 return;
             }
             isLongPressing = true;
@@ -2503,7 +2517,10 @@ function initGestures() {
                 video.play().catch(() => {});
             }
             if (navigator.vibrate) {
-                try { navigator.vibrate(30); } catch (_) {}
+                // 진동은 메인 쓰레드 작업과 분리해 rate 적용 후에 호출.
+                setTimeout(() => {
+                    try { navigator.vibrate(30); } catch (_) {}
+                }, 0);
             }
         }, LONG_PRESS_DELAY);
     }
@@ -2511,6 +2528,8 @@ function initGestures() {
     function endLongPress() {
         if (isLongPressing) {
             try { video.playbackRate = originalRate || 1; } catch (_) {}
+            // rate 복원 후 피치 보정 다시 켬 (다음 일반 재생 시 원래대로).
+            setPreservesPitch(true);
             isLongPressing = false;
             hideSpeedIndicator();
             // 배속 시작 전에 일시정지 상태였다면 손을 떼는 순간 원 상태로 복원.
@@ -2549,6 +2568,10 @@ function initGestures() {
             pressStartY = e.clientY;
             pressMoved = false;
             try { zone.setPointerCapture(e.pointerId); } catch (_) {}
+            // iOS Safari가 비디오 위 long-press를 자체 selection/callout 동작으로
+            // 처리하면서 짧게 재생이 끊기는 케이스를 막기 위해 기본 동작을 차단.
+            // (cancelable일 때만 호출 — passive 리스너로 등록된 경우 콘솔 경고 방지)
+            if (e.cancelable) e.preventDefault();
             startLongPress();
         });
 
