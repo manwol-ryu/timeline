@@ -545,6 +545,9 @@ function updatePremierePlayhead() {
         return;
     }
     playhead.hidden = false;
+    // 스크러빙 중에는 드래그 핸들러가 플레이헤드 위치를 직접 갱신하므로
+    // timeupdate(이전 currentTime)로 덮어써서 뒤로 튀는 현상을 막는다.
+    if (playhead.classList.contains('is-scrubbing')) return;
     const pxPerSec = getTimelinePixelsPerSecond();
     const px = Math.max(0, (video.currentTime || 0) * pxPerSec);
     playhead.style.left = `${px}px`;
@@ -556,15 +559,77 @@ function attachTimelineScrubHandlers(view) {
     const playhead = view.querySelector('.premiere-tl-playhead');
     const playheadHead = view.querySelector('.premiere-tl-playhead-head');
 
+    // 빠른 드래그 중 pointermove마다 video.currentTime을 쓰면 iOS Safari에서
+    // 시킹 요청이 누적·충돌해 영상이 멈추거나 중간 위치로 되돌아간다.
+    // 플레이헤드 UI는 즉시 갱신하고, 실제 currentTime 갱신은 rAF로 묶어 최신 값만 적용.
+    let pendingSeekTime = null;
+    let seekRafId = 0;
+    let waitingForSeeked = false;
+
+    function applySeekImmediate(target) {
+        if (Math.abs(target - (video.currentTime || 0)) < 0.05) return;
+        try {
+            if (typeof video.fastSeek === 'function') video.fastSeek(target);
+            else video.currentTime = target;
+        } catch (_) {}
+    }
+
+    function flushPendingSeek() {
+        seekRafId = 0;
+        if (pendingSeekTime === null) return;
+        // 이전 시킹이 아직 진행 중이면 완료를 기다렸다가 다시 시도.
+        // (iOS Safari는 시킹 중에 새 시킹을 받으면 둘 다 무시될 수 있다.)
+        if (video.seeking) {
+            if (!waitingForSeeked) {
+                waitingForSeeked = true;
+                video.addEventListener('seeked', () => {
+                    waitingForSeeked = false;
+                    if (pendingSeekTime !== null && !seekRafId) {
+                        seekRafId = requestAnimationFrame(flushPendingSeek);
+                    }
+                }, { once: true });
+            }
+            return;
+        }
+        const target = pendingSeekTime;
+        pendingSeekTime = null;
+        applySeekImmediate(target);
+    }
+
     function seekFromClientX(clientX) {
         const pxPerSec = getTimelinePixelsPerSecond();
         if (!pxPerSec || !Number.isFinite(totalDuration) || totalDuration <= 0) return;
         const rect = canvas.getBoundingClientRect();
         const localX = clientX - rect.left;
         const t = Math.max(0, Math.min(totalDuration, localX / pxPerSec));
-        if (Number.isFinite(t)) {
-            video.currentTime = t;
-            updatePremierePlayhead();
+        if (!Number.isFinite(t)) return;
+        // 플레이헤드는 즉시 위치 이동 (드래그 반응성 유지).
+        if (playhead) {
+            playhead.hidden = false;
+            playhead.style.left = `${Math.max(0, t * pxPerSec)}px`;
+        }
+        pendingSeekTime = t;
+        if (!seekRafId) {
+            seekRafId = requestAnimationFrame(flushPendingSeek);
+        }
+    }
+
+    function finalizeScrub() {
+        // 보류 중인 rAF 시킹이 있으면 즉시 적용해, 손을 떼자마자
+        // 마지막 위치로 시킹이 시작되도록 한다.
+        if (seekRafId) {
+            cancelAnimationFrame(seekRafId);
+            flushPendingSeek();
+        }
+        // 시킹이 완료될 때까지 playhead의 is-scrubbing을 유지해
+        // 도중 발생하는 timeupdate(예전 currentTime)로 인한
+        // 잠깐의 위치 되감김을 방지한다.
+        if (video.seeking) {
+            video.addEventListener('seeked', () => {
+                playhead?.classList.remove('is-scrubbing');
+            }, { once: true });
+        } else {
+            playhead?.classList.remove('is-scrubbing');
         }
     }
 
@@ -596,7 +661,7 @@ function attachTimelineScrubHandlers(view) {
             scrubbing = false;
             target.releasePointerCapture?.(e.pointerId);
             ruler?.classList.remove('is-scrubbing');
-            playhead?.classList.remove('is-scrubbing');
+            finalizeScrub();
             if (wasPlaying) video.play().catch(() => {});
         }
         target.addEventListener('pointerup', endScrub);
@@ -628,7 +693,7 @@ function attachTimelineScrubHandlers(view) {
             if (!dragging) return;
             dragging = false;
             playheadHead.releasePointerCapture?.(e.pointerId);
-            playhead?.classList.remove('is-scrubbing');
+            finalizeScrub();
             if (wasPlaying) video.play().catch(() => {});
         }
         playheadHead.addEventListener('pointerup', endHeadDrag);
@@ -2290,6 +2355,7 @@ function initGestures() {
     let longPressTimer = null;
     let isLongPressing = false;
     let originalRate = 1;
+    let wasPausedAtLongPressStart = false;
     let pressStartX = 0;
     let pressStartY = 0;
     let pressMoved = false;
@@ -2323,10 +2389,23 @@ function initGestures() {
         const duration = Number.isFinite(video.duration) ? video.duration : totalDuration;
         let next = video.currentTime + deltaSeconds;
         if (Number.isFinite(duration) && duration > 0) {
-            next = Math.min(duration, next);
+            // iOS Safari가 정확히 duration으로 시킹되면 끝에서 멈추거나
+            // 처음으로 되감기는 경우가 있어 살짝 안쪽으로 클램프.
+            next = Math.min(Math.max(0, duration - 0.25), next);
         }
         next = Math.max(0, next);
-        video.currentTime = next;
+        smoothSeekTo(next);
+    }
+
+    // 누적된 시킹이 서로 간섭하지 않도록 일관된 시킹 헬퍼.
+    // fastSeek가 있으면 keyframe으로 빠르게 점프해 더 매끄럽다 (iOS Safari/Firefox 지원).
+    function smoothSeekTo(target) {
+        if (!Number.isFinite(target)) return;
+        if (Math.abs(target - (video.currentTime || 0)) < 0.05) return;
+        if (typeof video.fastSeek === 'function') {
+            try { video.fastSeek(target); return; } catch (_) {}
+        }
+        video.currentTime = target;
     }
 
     function togglePlay() {
@@ -2412,7 +2491,12 @@ function initGestures() {
             if (pressMoved) return;
             if (!video.src || !Number.isFinite(video.duration)) return;
             originalRate = video.playbackRate || 1;
-            video.playbackRate = SPEED_MULTIPLIER;
+            wasPausedAtLongPressStart = video.paused;
+            try {
+                video.playbackRate = SPEED_MULTIPLIER;
+            } catch (_) {
+                return;
+            }
             isLongPressing = true;
             showSpeedIndicator();
             if (video.paused) {
@@ -2426,9 +2510,13 @@ function initGestures() {
 
     function endLongPress() {
         if (isLongPressing) {
-            video.playbackRate = originalRate || 1;
+            try { video.playbackRate = originalRate || 1; } catch (_) {}
             isLongPressing = false;
             hideSpeedIndicator();
+            // 배속 시작 전에 일시정지 상태였다면 손을 떼는 순간 원 상태로 복원.
+            if (wasPausedAtLongPressStart && !video.paused) {
+                video.pause();
+            }
         }
         clearTimeout(longPressTimer);
         longPressTimer = null;
