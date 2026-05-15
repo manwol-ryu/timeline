@@ -620,7 +620,7 @@ body.is-video-expanded {
 
 .file-thumbnail-wrap {
     width: 100%;
-    aspect-ratio: var(--thumbnail-aspect, 16 / 9);
+    aspect-ratio: 16 / 9;
     border-radius: clamp(10px, 0.8vw, 14px);
     overflow: hidden;
     background: #0b1220;
@@ -2763,23 +2763,19 @@ body.is-resizing .panel-resizer {
 
 /* ─── Project · Loaded 패널 (fileInfoCard) 정리 ─── */
 [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
-    gap: clamp(8px, 1.4cqh, 14px);
-    padding: clamp(34px, 5cqh, 44px) clamp(12px, 1.4cqw, 18px) clamp(10px, 1.6cqh, 16px);
-    flex-flow: row wrap;
-    justify-content: center;
-    align-items: center;
-    align-content: start;
+    gap: clamp(5px, 1cqh, 10px);
+    padding: clamp(30px, 4cqh, 36px) clamp(8px, 1cqw, 14px) clamp(8px, 1.5cqh, 14px);
 }
 
 [data-design="premiere"] #fileInfoCard .file-meta {
     flex-direction: column;
-    align-items: flex-start;
-    gap: clamp(6px, 1cqh, 10px);
+    align-items: center;
+    gap: clamp(4px, 1cqh, 8px);
     width: 100%;
-    max-width: none;
-    margin: 0;
+    max-width: 280px;
+    margin: 0 auto;
     min-width: 0;
-    flex: 1 1 170px;
+    flex: 0 1 auto;
 }
 
 [data-design="premiere"] #fileInfoCard .file-meta > div:first-child {
@@ -2788,62 +2784,59 @@ body.is-resizing .panel-resizer {
 }
 
 [data-design="premiere"] #fileInfoCard .file-thumbnail-wrap {
-    width: auto;
-    max-width: min(100%, 220px);
-    height: auto;
-    margin: 0;
-    border-radius: 6px;
-    flex: 0 1 clamp(120px, 42%, 220px);
-    align-self: center;
+    width: 100%;
+    max-width: 280px;
+    max-height: clamp(54px, 10cqh, 118px);
+    margin: 0 auto;
+    border-radius: 4px;
+    flex: 0 1 auto;
 }
 
 [data-design="premiere"] #fileInfoCard .video-loading-progress {
-    display: none !important;
-}
-
-[data-design="premiere"] #fileInfoCard #convertStatus {
     width: 100%;
-    max-width: 320px;
+    max-width: 280px;
     margin: 0 auto;
-    text-align: center;
-    line-height: 1.35;
-    min-height: 0;
+    flex-shrink: 0;
 }
 
 [data-design="premiere"] #fileInfoCard #videoLoadingStatus,
-[data-design="premiere"] #fileInfoCard #convertStatus:empty {
-    display: none;
+[data-design="premiere"] #fileInfoCard #convertStatus {
+    width: 100%;
+    max-width: 280px;
+    margin: 0 auto;
+    text-align: center;
+    line-height: 1.35;
 }
 
 [data-design="premiere"] #fileInfoCard .file-actions {
     display: flex;
-    gap: 8px;
-    justify-content: flex-start;
+    gap: 6px;
+    justify-content: center;
     width: 100%;
 }
 
 [data-design="premiere"] #fileInfoCard .file-actions button {
     flex: 1;
-    max-width: 140px;
-    height: 32px;
-    font-size: 12px;
+    max-width: 120px;
+    height: 30px;
+    font-size: 11px;
 }
 
 [data-design="premiere"] #fileInfoCard .file-label {
-    font-size: 10px;
+    font-size: 9px;
     letter-spacing: 0.16em;
     color: var(--text-subtle);
-    text-align: left;
+    text-align: center;
 }
 
 [data-design="premiere"] #fileInfoCard .file-name {
-    font-size: clamp(13px, 3.8cqw, 17px);
+    font-size: 13px;
     line-height: 1.25;
     max-height: 2.5em;
     color: var(--premiere-text-strong);
     overflow: hidden;
     overflow-wrap: anywhere;
-    text-align: left;
+    text-align: center;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2851,9 +2844,9 @@ body.is-resizing .panel-resizer {
 
 [data-design="premiere"] #fileInfoCard .file-size {
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 12px;
+    font-size: 11px;
     color: var(--text-subtle);
-    text-align: left;
+    text-align: center;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2861,17 +2854,16 @@ body.is-resizing .panel-resizer {
 
 @container premiere-bottom (max-height: 260px) {
     [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
-        gap: 7px;
+        gap: 5px;
         padding: 30px 10px 8px;
     }
 
     [data-design="premiere"] #fileInfoCard .file-thumbnail-wrap {
-        flex-basis: clamp(104px, 36%, 170px);
-        max-width: min(100%, 170px);
+        display: none;
     }
 
     [data-design="premiere"] #fileInfoCard .file-meta {
-        gap: 6px;
+        gap: 5px;
     }
 
     [data-design="premiere"] #fileInfoCard .file-actions button {
@@ -2885,7 +2877,6 @@ body.is-resizing .panel-resizer {
         line-height: 1.25;
     }
 }
-
 
 /* uploadCard inner 요소 중앙 정렬 */
 [data-design="premiere"] #uploadCard strong,

@@ -2153,7 +2153,6 @@ function captureVideoThumbnail() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         fileThumbnailImg.src = dataUrl;
-        fileThumbnailWrap.style.setProperty('--thumbnail-aspect', `${video.videoWidth} / ${video.videoHeight}`);
         fileThumbnailWrap.hidden = false;
     } catch (err) {
         // 보안 정책으로 캡처 실패 시 무시
