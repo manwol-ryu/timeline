@@ -1705,6 +1705,7 @@ textarea {
     max-width: none;
     width: 100%;
     height: auto;
+    min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
     grid-template-rows: 1fr;
