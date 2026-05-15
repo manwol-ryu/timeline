@@ -1900,6 +1900,21 @@ textarea {
     text-align: center;
 }
 
+[data-design="premiere"] #premiereBottomZone > #uploadCard,
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard,
+[data-design="premiere"] .premiere-tl-tracks-area {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+[data-design="premiere"] #premiereBottomZone > #uploadCard::-webkit-scrollbar,
+[data-design="premiere"] #premiereBottomZone > #fileInfoCard::-webkit-scrollbar,
+[data-design="premiere"] .premiere-tl-tracks-area::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
 [data-design="premiere"] #premiereBottomZone > #uploadCard:not([style*="display: none"]) {
     display: flex !important;
     flex-direction: column;
