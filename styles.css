@@ -38,12 +38,13 @@
 
 body {
     margin: 0;
-    padding: 16px clamp(10px, 2vw, 40px);
+    --page-padding-y: clamp(8px, 1.2vh, 16px);
+    --page-padding-x: clamp(10px, 2vw, 40px);
+    padding: var(--page-padding-y) var(--page-padding-x);
     font-family: 'Pretendard', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: linear-gradient(135deg, var(--bg-1), var(--bg-2));
     color: var(--text);
-    height: 100vh;
-    min-height: 100vh;
+    min-height: 100dvh;
     overflow: hidden;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
@@ -54,8 +55,8 @@ body {
 
 .app-shell {
     max-width: 2400px;
-    margin: 0 clamp(40px, 5vw, 180px);
-    height: 100%;
+    margin: 0 clamp(20px, 4vw, 120px);
+    min-height: calc(100dvh - (var(--page-padding-y) * 2));
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: center;
@@ -63,7 +64,7 @@ body {
 }
 
 .video-stage {
-    height: calc(100vh - 80px);
+    min-height: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -72,8 +73,8 @@ body {
 .workspace {
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    height: calc(100vh - 80px);
+    gap: 10px;
+    min-height: 0;
     overflow: hidden;
     border-left: 1px solid var(--border);
     padding-left: clamp(12px, 1vw, 32px);
@@ -2819,4 +2820,24 @@ body.is-resizing .panel-resizer {
 
 [data-design="premiere"] #uploadCard input[type="file"] {
     margin: 0 auto;
+}
+
+
+@media (max-height: 900px) {
+    .app-shell {
+        gap: clamp(6px, 1vh, 14px);
+    }
+
+    .panel {
+        padding: clamp(12px, 1.2vh, 20px) clamp(12px, 1.4vw, 20px);
+        gap: 10px;
+    }
+
+    .video-panel {
+        gap: 8px;
+    }
+
+    .workspace-panels {
+        gap: 10px;
+    }
 }
