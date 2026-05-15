@@ -1692,7 +1692,8 @@ textarea {
     font-family: 'Inter', 'Noto Sans KR', 'Pretendard', system-ui, -apple-system, sans-serif;
     background: var(--bg-1);
     color: var(--text);
-    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -1700,7 +1701,7 @@ textarea {
 
 /* ─── App shell: 상단 영상+메모, 1px 갭으로 패널 라인 효과 ─── */
 [data-design="premiere"] .app-shell {
-    flex: 1.8 1 0;
+    flex: 1 1 auto;
     margin: 0;
     max-width: none;
     width: 100%;
@@ -1871,7 +1872,9 @@ textarea {
 /* ─── 하단 영역: Project(1) + Timeline(4), 1px 갭 ─── */
 .premiere-bottom-zone[hidden] { display: none; }
 [data-design="premiere"] .premiere-bottom-zone {
-    flex: 1 1 0;
+    flex: 0 0 clamp(220px, 30dvh, 360px);
+    min-height: 180px;
+    max-height: min(42dvh, 440px);
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
     grid-template-rows: 1fr;
