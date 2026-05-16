@@ -69,6 +69,10 @@ const STORAGE_DESIGN = 'timeline_design';
 const DESIGN_DEFAULT = 'default';
 const VALID_DESIGNS = ['default', 'ipad', 'premiere'];
 const STORAGE_FASTSTART_AUTO = 'timeline_faststart_auto';
+const DEFAULT_TIMECODE_FPS = 30;
+const INVALID_TIMECODE = '--:--:--:--';
+const MAX_RULER_TICKS = 600;
+const MAX_FRAME_RATE_MOOV_BYTES = 96 * 1024 * 1024;
 
 let _premiereOriginalParents = null;
 let premiereTimelineZoom = 8; // px per second (default)
@@ -80,6 +84,110 @@ const TIMELINE_FOCUS_FRACTION = 0.6;
 let undoStack = [];
 let redoStack = [];
 let isRestoringTimelineHistory = false;
+let premiereTimelineRenderRafId = 0;
+let currentTimecodeFps = DEFAULT_TIMECODE_FPS;
+let detectedVideoFrameRate = null;
+let frameRateDetectionState = 'default';
+let frameRateDetectionToken = 0;
+
+function schedulePremiereTimelineRender() {
+    if (!isPremiereDesign()) return;
+    if (premiereTimelineRenderRafId) return;
+    premiereTimelineRenderRafId = requestAnimationFrame(() => {
+        premiereTimelineRenderRafId = 0;
+        renderPremiereTimeline();
+    });
+}
+
+function getTimecodeFps() {
+    return Number.isFinite(currentTimecodeFps) && currentTimecodeFps > 0
+        ? currentTimecodeFps
+        : DEFAULT_TIMECODE_FPS;
+}
+
+function normalizeTimecodeFps(fps) {
+    if (!Number.isFinite(fps) || fps <= 0) return DEFAULT_TIMECODE_FPS;
+    return Math.max(1, Math.min(240, Math.round(fps)));
+}
+
+function formatFpsValue(fps) {
+    if (!Number.isFinite(fps) || fps <= 0) return '';
+    const rounded = Math.round(fps);
+    if (Math.abs(fps - rounded) < 0.01) return String(rounded);
+    return fps.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function invalidateTimecodeCaches() {
+    cachedTotalBadgeForDuration = NaN;
+    cachedTotalBadgeForFps = NaN;
+    lastTimeBadgeText = '';
+}
+
+function getFrameRateDetailsText() {
+    if (frameRateDetectionState === 'pending') return 'FPS 분석 중';
+    if (detectedVideoFrameRate && Number.isFinite(detectedVideoFrameRate.actualFps)) {
+        const actual = formatFpsValue(detectedVideoFrameRate.actualFps);
+        const tcFps = getTimecodeFps();
+        return actual && Number(actual) !== tcFps
+            ? `영상 FPS ${actual} · 타임코드 ${tcFps}fps`
+            : `영상 FPS ${tcFps}`;
+    }
+    return `타임코드 ${getTimecodeFps()}fps`;
+}
+
+function refreshTimecodeDependentUi({ updateForm = false } = {}) {
+    invalidateTimecodeCaches();
+    setTimeBadge();
+    renderTimeline();
+    if (!isPremiereDesign()) {
+        renderSegments(searchInput.value);
+    } else {
+        schedulePremiereTimelineRender();
+    }
+    refreshFileDetails();
+    if (updateForm && !editingId && !isEditableTarget(document.activeElement)) {
+        resetForm();
+    }
+    document.dispatchEvent(new CustomEvent('timecodefpschange'));
+}
+
+function resetFrameRateForFile(file) {
+    frameRateDetectionToken += 1;
+    currentTimecodeFps = DEFAULT_TIMECODE_FPS;
+    detectedVideoFrameRate = null;
+    frameRateDetectionState = looksLikeMp4(file) ? 'pending' : 'default';
+    invalidateTimecodeCaches();
+}
+
+function applyDetectedVideoFrameRate(info, { updateForm = false } = {}) {
+    if (info && Number.isFinite(info.actualFps) && info.actualFps > 0) {
+        const timecodeFps = normalizeTimecodeFps(info.actualFps);
+        currentTimecodeFps = timecodeFps;
+        detectedVideoFrameRate = {
+            ...info,
+            timecodeFps,
+        };
+        frameRateDetectionState = 'detected';
+    } else {
+        currentTimecodeFps = DEFAULT_TIMECODE_FPS;
+        detectedVideoFrameRate = null;
+        frameRateDetectionState = 'default';
+    }
+    refreshTimecodeDependentUi({ updateForm });
+}
+
+function restoreFrameRateFromStorage(data) {
+    if (!data || !Number.isFinite(data.timecodeFps)) return;
+    currentTimecodeFps = normalizeTimecodeFps(data.timecodeFps);
+    detectedVideoFrameRate = data.videoFrameRate && Number.isFinite(data.videoFrameRate.actualFps)
+        ? {
+            ...data.videoFrameRate,
+            timecodeFps: currentTimecodeFps,
+        }
+        : null;
+    frameRateDetectionState = detectedVideoFrameRate ? 'detected' : 'default';
+    invalidateTimecodeCaches();
+}
 
 function getDesign() {
     const stored = localStorage.getItem(STORAGE_DESIGN);
@@ -134,6 +242,11 @@ function applyDesign() {
     }
 
     movePremiereQuickAddButton(design === 'premiere');
+
+    if (design !== 'premiere') {
+        renderTimeline();
+        renderSegments(searchInput.value);
+    }
 
     if (typeof renderPremiereTimeline === 'function') {
         renderPremiereTimeline();
@@ -205,7 +318,7 @@ function buildPremiereTimelineDom() {
                     <button type="button" class="premiere-tl-detail-close" aria-label="닫기">✕</button>
                 </div>
                 <div class="premiere-tl-detail-body">
-                    <div class="premiere-tl-detail-time">--:-- ~ --:--</div>
+                    <div class="premiere-tl-detail-time">--:--:--:-- ~ --:--:--:--</div>
                     <span class="premiere-tl-detail-tag" hidden></span>
                     <p class="premiere-tl-detail-note"></p>
                 </div>
@@ -431,6 +544,10 @@ function focusPremiereTimelineOnSegment(seg) {
 }
 
 function renderPremiereTimeline() {
+    if (premiereTimelineRenderRafId) {
+        cancelAnimationFrame(premiereTimelineRenderRafId);
+        premiereTimelineRenderRafId = 0;
+    }
     if (!isPremiereDesign()) return;
     const view = ensurePremiereTimelineView();
     if (!view) return;
@@ -439,7 +556,8 @@ function renderPremiereTimeline() {
     if (fileLabel) {
         const sizePart = selectedFileSize ? formatBytesShort(selectedFileSize) : '';
         const durPart = totalDuration > 0 ? formatTime(totalDuration) : '';
-        const parts = [selectedFileName, sizePart, durPart].filter(Boolean);
+        const fpsPart = selectedFileName ? getFrameRateDetailsText() : '';
+        const parts = [selectedFileName, sizePart, durPart, fpsPart].filter(Boolean);
         fileLabel.textContent = parts.length ? parts.join(' · ') : fileLabel.dataset.empty;
     }
 
@@ -470,7 +588,8 @@ function renderPremiereTimeline() {
 
     // 줌 레벨에 따라 눈금 간격을 적절히 결정
     const tickInterval = pickRulerTickInterval(totalDuration, pxPerSec);
-    for (let t = 0; t <= totalDuration + 0.001; t += tickInterval) {
+    let tickCount = 0;
+    for (let t = 0; t <= totalDuration + 0.001 && tickCount <= MAX_RULER_TICKS; t += tickInterval, tickCount += 1) {
         const tick = document.createElement('span');
         tick.className = 'premiere-tl-ruler-tick';
         tick.style.left = `${t * pxPerSec}px`;
@@ -558,14 +677,16 @@ function renderPremiereTimeline() {
 function pickRulerTickInterval(duration, pxPerSec) {
     // 한 눈금이 적어도 60px이 되도록 간격을 고른다
     const minPx = 60;
+    const minIntervalForTickCount = Math.max(0, duration / MAX_RULER_TICKS);
+    const frameDuration = 1 / getTimecodeFps();
     const candidates = [
-        1 / 60, 1 / 30, 1 / 10, 0.5, 1, 2, 5, 10, 15, 30,
+        frameDuration, frameDuration * 2, frameDuration * 5, 0.5, 1, 2, 5, 10, 15, 30,
         60, 120, 300, 600, 1800, 3600
     ];
     for (const c of candidates) {
-        if (c * pxPerSec >= minPx) return c;
+        if (c * pxPerSec >= minPx && c >= minIntervalForTickCount) return c;
     }
-    return Math.max(duration / 8, 1);
+    return Math.max(minIntervalForTickCount, minPx / Math.max(pxPerSec, 1), 1);
 }
 
 function openPremiereClipDetail(segId) {
@@ -881,12 +1002,13 @@ function attachClipDragHandlers(clip, seg) {
         dragMode = null;
         clip.classList.remove('is-dragging');
         clip.releasePointerCapture?.(e.pointerId);
+        if (!wasDrag) {
+            dragHistorySnapshot = null;
+            return;
+        }
         // click 이벤트가 먼저 발생할 시간을 줘서 dragHappened 플래그를 검사할 수 있게 함
         setTimeout(() => {
-            if (wasDrag) {
-                pushTimelineHistorySnapshot(dragHistorySnapshot);
-                saveToLocalStorage();
-            }
+            pushTimelineHistorySnapshot(dragHistorySnapshot);
             dragHistorySnapshot = null;
             renderAll();
         }, 0);
@@ -980,15 +1102,15 @@ function setFullscreenMode(mode) {
 }
 
 function formatTime(seconds) {
-    if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
-    const totalSeconds = Math.floor(seconds);
+    if (!Number.isFinite(seconds) || seconds < 0) return INVALID_TIMECODE;
+    const fps = getTimecodeFps();
+    const totalFrames = Math.floor((seconds * fps) + 0.000001);
+    const frame = totalFrames % fps;
+    const totalSeconds = Math.floor(totalFrames / fps);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
     const secs = totalSeconds % 60;
-    if (hours > 0) {
-        return [hours, minutes, secs].map(unit => String(unit).padStart(2, '0')).join(':');
-    }
-    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return [hours, minutes, secs, frame].map(unit => String(unit).padStart(2, '0')).join(':');
 }
 
 function parseTimeInput(value) {
@@ -996,10 +1118,27 @@ function parseTimeInput(value) {
     if (!raw) return NaN;
     if (raw.includes(':')) {
         const parts = raw.split(':').map(part => part.trim());
+        if (parts.length > 4) return NaN;
         if (parts.some(part => part === '')) return NaN;
         const numbers = parts.map(Number);
         if (numbers.some(num => !Number.isFinite(num) || num < 0)) return NaN;
-        return numbers.reduce((acc, num) => acc * 60 + num, 0);
+        if (parts.length === 4) {
+            const [hours, minutes, secs, frames] = numbers;
+            if (![hours, minutes, secs, frames].every(Number.isInteger)) return NaN;
+            const fps = getTimecodeFps();
+            if (minutes >= 60 || secs >= 60 || frames >= fps) return NaN;
+            return (hours * 3600) + (minutes * 60) + secs + (frames / fps);
+        }
+        if (parts.length === 3) {
+            const [hours, minutes, secs] = numbers;
+            if (minutes >= 60 || secs >= 60) return NaN;
+            return (hours * 3600) + (minutes * 60) + secs;
+        }
+        if (parts.length === 2) {
+            const [minutes, secs] = numbers;
+            if (secs >= 60) return NaN;
+            return (minutes * 60) + secs;
+        }
     }
     const numeric = Number(raw);
     return Number.isFinite(numeric) && numeric >= 0 ? numeric : NaN;
@@ -1030,8 +1169,8 @@ function getBaseFileName() {
 function refreshFileDetails() {
     if (!fileInfoCard || fileInfoCard.style.display === 'none') return;
     const sizeText = selectedFileSize ? `${(selectedFileSize / (1024 * 1024)).toFixed(1)} MB` : '-- MB';
-    const durationText = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
-    fileDetailsText.textContent = `${sizeText} · 길이 ${durationText}`;
+    const durationText = totalDuration > 0 ? formatTime(totalDuration) : INVALID_TIMECODE;
+    fileDetailsText.textContent = `${sizeText} · 길이 ${durationText} · ${getFrameRateDetailsText()}`;
 }
 
 function updateFileInfo(file) {
@@ -1094,14 +1233,17 @@ function setActiveTab(target) {
 }
 
 // totalDuration은 영상 로드 후 거의 변하지 않으므로 캐싱.
-let cachedTotalBadgeText = '--:--';
+let cachedTotalBadgeText = INVALID_TIMECODE;
 let cachedTotalBadgeForDuration = NaN;
+let cachedTotalBadgeForFps = NaN;
 let lastTimeBadgeText = '';
 function setTimeBadge() {
     const cur = video.currentTime || 0;
-    if (cachedTotalBadgeForDuration !== totalDuration) {
-        cachedTotalBadgeText = totalDuration > 0 ? formatTime(totalDuration) : '--:--';
+    const fps = getTimecodeFps();
+    if (cachedTotalBadgeForDuration !== totalDuration || cachedTotalBadgeForFps !== fps) {
+        cachedTotalBadgeText = totalDuration > 0 ? formatTime(totalDuration) : INVALID_TIMECODE;
         cachedTotalBadgeForDuration = totalDuration;
+        cachedTotalBadgeForFps = fps;
     }
     const next = `${formatTime(cur)} / ${cachedTotalBadgeText}`;
     // 같은 텍스트면 textContent 쓰기로 인한 paint 비용 생략.
@@ -1118,6 +1260,7 @@ function renderTimelineBar(targetBar, emptyState) {
         return;
     }
     emptyState.style.display = 'none';
+    const fragment = document.createDocumentFragment();
     segments.forEach(segment => {
         if (!Number.isFinite(segment.start) || !Number.isFinite(segment.end)) return;
         const startPercent = Math.max(0, Math.min(100, (segment.start / totalDuration) * 100));
@@ -1133,8 +1276,9 @@ function renderTimelineBar(targetBar, emptyState) {
             video.currentTime = segment.start;
             video.play();
         });
-        targetBar.appendChild(marker);
+        fragment.appendChild(marker);
     });
+    targetBar.appendChild(fragment);
 }
 
 function renderTimeline() {
@@ -1217,11 +1361,91 @@ function redoTimelineAction() {
     restoreTimelineHistory(redoStack.pop(), '작업 다시 적용');
 }
 
+let renderSegmentsToken = 0;
+
+function scheduleUiChunk(callback) {
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(callback, { timeout: 120 });
+    } else {
+        setTimeout(callback, 0);
+    }
+}
+
+function createSegmentCard(segment) {
+    const card = document.createElement('article');
+    card.className = 'segment-card';
+
+    const header = document.createElement('div');
+    header.className = 'segment-header';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'segment-title';
+    const dot = document.createElement('span');
+    dot.className = 'color-dot';
+    dot.style.background = segment.color;
+    const titleText = document.createElement('strong');
+    titleText.textContent = segment.title || '제목 없음';
+    titleWrap.append(dot, titleText);
+
+    const timeText = document.createElement('span');
+    timeText.className = 'segment-time';
+    timeText.textContent = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`;
+
+    header.append(titleWrap, timeText);
+
+    const note = document.createElement('p');
+    note.className = 'segment-note';
+    note.textContent = segment.note || '작성된 메모가 없습니다.';
+
+    card.append(header, note);
+
+    if (segment.tag) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = `#${segment.tag}`;
+        card.appendChild(tag);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'segment-actions';
+
+    const jumpButton = document.createElement('button');
+    jumpButton.className = 'success';
+    jumpButton.textContent = '재생';
+    jumpButton.addEventListener('click', () => {
+        if (Number.isFinite(segment.start)) {
+            video.currentTime = segment.start;
+            video.play();
+        }
+    });
+
+    const editButton = document.createElement('button');
+    editButton.className = 'ghost';
+    editButton.textContent = '수정';
+    editButton.addEventListener('click', () => startEditing(segment.id));
+
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'danger';
+    deleteButton.textContent = '삭제';
+    deleteButton.addEventListener('click', () => {
+        if (!confirm('이 구간 메모를 삭제할까요?')) return;
+        recordTimelineHistory();
+        segments = segments.filter(item => item.id !== segment.id);
+        finishEditing();
+        renderAll();
+    });
+
+    actions.append(jumpButton, editButton, deleteButton);
+    card.appendChild(actions);
+    return card;
+}
+
 function renderSegments(filterText = '') {
-    segmentsList.innerHTML = '';
+    const token = ++renderSegmentsToken;
+    segmentsList.textContent = '';
     const keyword = filterText.trim().toLowerCase();
     const filtered = !keyword
-        ? segments
+        ? segments.slice()
         : segments.filter(segment => (segment._searchIndex || '').includes(keyword));
 
     if (filtered.length === 0) {
@@ -1233,86 +1457,39 @@ function renderSegments(filterText = '') {
     }
     segmentsEmpty.style.display = 'none';
 
-    const fragment = document.createDocumentFragment();
+    const chunkSize = 40;
+    let index = 0;
 
-    filtered.forEach(segment => {
-        const card = document.createElement('article');
-        card.className = 'segment-card';
-
-        const header = document.createElement('div');
-        header.className = 'segment-header';
-
-        const titleWrap = document.createElement('div');
-        titleWrap.className = 'segment-title';
-        const dot = document.createElement('span');
-        dot.className = 'color-dot';
-        dot.style.background = segment.color;
-        const titleText = document.createElement('strong');
-        titleText.textContent = segment.title || '제목 없음';
-        titleWrap.append(dot, titleText);
-
-        const timeText = document.createElement('span');
-        timeText.className = 'segment-time';
-        timeText.textContent = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`;
-
-        header.append(titleWrap, timeText);
-
-        const note = document.createElement('p');
-        note.className = 'segment-note';
-        note.textContent = segment.note || '작성된 메모가 없습니다.';
-
-        card.append(header, note);
-
-        if (segment.tag) {
-            const tag = document.createElement('span');
-            tag.className = 'tag';
-            tag.textContent = `#${segment.tag}`;
-            card.appendChild(tag);
+    function appendChunk() {
+        if (token !== renderSegmentsToken) return;
+        const fragment = document.createDocumentFragment();
+        const startedAt = performance.now();
+        let rendered = 0;
+        while (
+            index < filtered.length &&
+            rendered < chunkSize &&
+            performance.now() - startedAt < 10
+        ) {
+            fragment.appendChild(createSegmentCard(filtered[index]));
+            index += 1;
+            rendered += 1;
         }
+        segmentsList.appendChild(fragment);
+        if (index < filtered.length) {
+            scheduleUiChunk(appendChunk);
+        }
+    }
 
-        const actions = document.createElement('div');
-        actions.className = 'segment-actions';
-
-        const jumpButton = document.createElement('button');
-        jumpButton.className = 'success';
-        jumpButton.textContent = '재생';
-        jumpButton.addEventListener('click', () => {
-            if (Number.isFinite(segment.start)) {
-                video.currentTime = segment.start;
-                video.play();
-            }
-        });
-
-        const editButton = document.createElement('button');
-        editButton.className = 'ghost';
-        editButton.textContent = '수정';
-        editButton.addEventListener('click', () => startEditing(segment.id));
-
-        const deleteButton = document.createElement('button');
-        deleteButton.className = 'danger';
-        deleteButton.textContent = '삭제';
-        deleteButton.addEventListener('click', () => {
-            if (!confirm('이 구간 메모를 삭제할까요?')) return;
-            recordTimelineHistory();
-            segments = segments.filter(item => item.id !== segment.id);
-            finishEditing();
-            renderAll();
-        });
-
-        actions.append(jumpButton, editButton, deleteButton);
-        card.appendChild(actions);
-
-        fragment.appendChild(card);
-    });
-
-    segmentsList.appendChild(fragment);
+    appendChunk();
 }
 
 function renderAll() {
     segments.sort((a, b) => a.start - b.start);
     renderTimeline();
-    renderSegments(searchInput.value);
-    renderPremiereTimeline();
+    if (!isPremiereDesign()) {
+        renderSegments(searchInput.value);
+    }
+    schedulePremiereTimelineRender();
     saveToLocalStorage();
 }
 
@@ -1376,7 +1553,7 @@ function gatherFormData() {
     const end = parseTimeInput(endTimeInput.value);
 
     if (!Number.isFinite(start) || !Number.isFinite(end)) {
-        alert('시작/종료 시간을 올바르게 입력해주세요. (예: 1:20 또는 80)');
+        alert('시작/종료 시간을 올바르게 입력해주세요. (예: 00:01:20:15, 1:20 또는 80)');
         return null;
     }
     if (end <= start) {
@@ -1533,20 +1710,87 @@ function getStorageKey(fileName) {
     return STORAGE_KEY_PREFIX + fileName;
 }
 
-function saveToLocalStorage() {
-    if (!selectedFileName) return;
+let pendingLocalStorageSave = null;
+let pendingLocalStorageSaveHandle = 0;
+let pendingLocalStorageSaveType = '';
 
-    try {
-        const data = {
-            segments,
+function buildLocalStorageSavePayload() {
+    if (!selectedFileName) return null;
+    return {
+        key: getStorageKey(selectedFileName),
+        recentFileName: selectedFileName,
+        data: {
+            segments: cloneTimelineSegments(),
             totalDuration,
             selectedFileName,
+            timecodeFps: getTimecodeFps(),
+            videoFrameRate: detectedVideoFrameRate,
             savedAt: new Date().toISOString()
-        };
-        localStorage.setItem(getStorageKey(selectedFileName), JSON.stringify(data));
-        localStorage.setItem(STORAGE_RECENT_FILE, selectedFileName);
+        },
+    };
+}
+
+function commitLocalStorageSave(payload) {
+    if (!payload) return;
+    try {
+        localStorage.setItem(payload.key, JSON.stringify(payload.data));
+        localStorage.setItem(STORAGE_RECENT_FILE, payload.recentFileName);
     } catch (error) {
         console.error('localStorage 저장 실패:', error);
+    }
+}
+
+function cancelPendingLocalStorageSave() {
+    if (!pendingLocalStorageSaveHandle) return;
+    if (pendingLocalStorageSaveType === 'idle' && typeof cancelIdleCallback === 'function') {
+        cancelIdleCallback(pendingLocalStorageSaveHandle);
+    } else {
+        clearTimeout(pendingLocalStorageSaveHandle);
+    }
+    pendingLocalStorageSaveHandle = 0;
+    pendingLocalStorageSaveType = '';
+}
+
+function flushPendingLocalStorageSave() {
+    if (!pendingLocalStorageSave) return;
+    const payload = pendingLocalStorageSave;
+    pendingLocalStorageSave = null;
+    cancelPendingLocalStorageSave();
+    commitLocalStorageSave(payload);
+}
+
+function discardPendingLocalStorageSave() {
+    pendingLocalStorageSave = null;
+    cancelPendingLocalStorageSave();
+}
+
+function saveToLocalStorage({ immediate = false } = {}) {
+    const payload = buildLocalStorageSavePayload();
+    if (!payload) return;
+    if (immediate) {
+        pendingLocalStorageSave = null;
+        cancelPendingLocalStorageSave();
+        commitLocalStorageSave(payload);
+        return;
+    }
+
+    pendingLocalStorageSave = payload;
+    cancelPendingLocalStorageSave();
+
+    const run = () => {
+        const nextPayload = pendingLocalStorageSave;
+        pendingLocalStorageSave = null;
+        pendingLocalStorageSaveHandle = 0;
+        pendingLocalStorageSaveType = '';
+        commitLocalStorageSave(nextPayload);
+    };
+
+    if (typeof requestIdleCallback === 'function') {
+        pendingLocalStorageSaveType = 'idle';
+        pendingLocalStorageSaveHandle = requestIdleCallback(run, { timeout: 1000 });
+    } else {
+        pendingLocalStorageSaveType = 'timeout';
+        pendingLocalStorageSaveHandle = setTimeout(run, 120);
     }
 }
 
@@ -1570,6 +1814,7 @@ function loadFromLocalStorage(fileName) {
         if (typeof data.totalDuration === 'number' && Number.isFinite(data.totalDuration)) {
             totalDuration = data.totalDuration;
         }
+        restoreFrameRateFromStorage(data);
 
         renderAll();
         resetTimelineHistory();
@@ -1594,12 +1839,13 @@ function loadRecentFileInfo() {
         if (!stored) return;
 
         const data = JSON.parse(stored);
+        restoreFrameRateFromStorage(data);
 
         selectedFileName = recentFileName;
         fileNameText.textContent = `${recentFileName} (영상 파일을 다시 선택해주세요)`;
 
-        const durationText = data.totalDuration > 0 ? formatTime(data.totalDuration) : '--:--';
-        fileDetailsText.textContent = `캐시된 타임라인 ${data.segments?.length || 0}개 · 길이 ${durationText}`;
+        const durationText = data.totalDuration > 0 ? formatTime(data.totalDuration) : INVALID_TIMECODE;
+        fileDetailsText.textContent = `캐시된 타임라인 ${data.segments?.length || 0}개 · 길이 ${durationText} · ${getFrameRateDetailsText()}`;
 
         uploadCard.style.display = 'none';
         fileInfoCard.style.display = 'flex';
@@ -1667,6 +1913,7 @@ function updateCacheInfo() {
         deleteBtn.style.fontSize = '0.85rem';
         deleteBtn.addEventListener('click', () => {
             if (confirm(`"${file.fileName}"의 타임라인 데이터를 삭제할까요?`)) {
+                flushPendingLocalStorageSave();
                 localStorage.removeItem(STORAGE_KEY_PREFIX + file.fileName);
                 if (selectedFileName === file.fileName) {
                     segments = [];
@@ -1700,6 +1947,7 @@ function clearCurrentCache() {
         return;
     }
     if (confirm(`"${selectedFileName}"의 타임라인 데이터를 삭제할까요?`)) {
+        discardPendingLocalStorageSave();
         localStorage.removeItem(STORAGE_KEY_PREFIX + selectedFileName);
         segments = [];
         selectedFileName = '';
@@ -1718,6 +1966,7 @@ function clearAllCache() {
         return;
     }
     if (confirm(`전체 ${files.length}개 영상의 타임라인 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) {
+        discardPendingLocalStorageSave();
         files.forEach(file => {
             localStorage.removeItem(STORAGE_KEY_PREFIX + file.fileName);
         });
@@ -1936,6 +2185,151 @@ function walkInsideBox(view, parentOffset, parentSize, callback) {
     }
 }
 
+function readFourCc(view, offset) {
+    if (offset + 4 > view.byteLength) return '';
+    return String.fromCharCode(
+        view.getUint8(offset),
+        view.getUint8(offset + 1),
+        view.getUint8(offset + 2),
+        view.getUint8(offset + 3)
+    );
+}
+
+function getDirectChildBoxes(view, parentOffset, parentSize, type = '') {
+    const boxes = [];
+    walkInsideBox(view, parentOffset, parentSize, (box) => {
+        if (!type || box.type === type) boxes.push(box);
+    });
+    return boxes;
+}
+
+function findDirectChildBox(view, parentOffset, parentSize, type) {
+    let found = null;
+    walkInsideBox(view, parentOffset, parentSize, (box) => {
+        if (!found && box.type === type) found = box;
+    });
+    return found;
+}
+
+function readMdhdTimescale(view, mdhdBox) {
+    if (!mdhdBox || mdhdBox.payloadOffset + 24 > view.byteLength) return 0;
+    const version = view.getUint8(mdhdBox.payloadOffset);
+    const timescaleOffset = version === 1
+        ? mdhdBox.payloadOffset + 20
+        : mdhdBox.payloadOffset + 12;
+    if (timescaleOffset + 4 > view.byteLength) return 0;
+    return view.getUint32(timescaleOffset);
+}
+
+function readSttsFrameRate(view, sttsBox, timescale) {
+    if (!sttsBox || !Number.isFinite(timescale) || timescale <= 0) return null;
+    const entryCountOffset = sttsBox.payloadOffset + 4;
+    if (entryCountOffset + 4 > view.byteLength) return null;
+    const entryCount = view.getUint32(entryCountOffset);
+    const entriesOffset = sttsBox.payloadOffset + 8;
+    const maxEntriesBySize = Math.max(0, Math.floor((sttsBox.offset + sttsBox.size - entriesOffset) / 8));
+    const entryLimit = Math.min(entryCount, maxEntriesBySize, 50000);
+    if (entryLimit <= 0) return null;
+
+    let sampleCountTotal = 0;
+    let durationUnitsTotal = 0;
+    let firstDelta = 0;
+    let variableFrameRate = false;
+
+    for (let i = 0; i < entryLimit; i++) {
+        const p = entriesOffset + i * 8;
+        if (p + 8 > view.byteLength) break;
+        const sampleCount = view.getUint32(p);
+        const sampleDelta = view.getUint32(p + 4);
+        if (!sampleCount || !sampleDelta) continue;
+        if (firstDelta === 0) firstDelta = sampleDelta;
+        else if (sampleDelta !== firstDelta) variableFrameRate = true;
+        sampleCountTotal += sampleCount;
+        durationUnitsTotal += sampleCount * sampleDelta;
+    }
+
+    if (sampleCountTotal <= 0 || durationUnitsTotal <= 0) return null;
+    const actualFps = sampleCountTotal / (durationUnitsTotal / timescale);
+    if (!Number.isFinite(actualFps) || actualFps <= 0 || actualFps > 240) return null;
+    return {
+        actualFps,
+        timecodeFps: normalizeTimecodeFps(actualFps),
+        source: 'mp4-stts',
+        sampleCount: sampleCountTotal,
+        timescale,
+        variableFrameRate: variableFrameRate || entryLimit < entryCount,
+    };
+}
+
+function extractVideoFrameRateFromMoov(moovView, moovTotalSize) {
+    const rootBox = parseBoxHeader(moovView, 0);
+    if (!rootBox || rootBox.type !== 'moov') return null;
+
+    const tracks = getDirectChildBoxes(
+        moovView,
+        rootBox.payloadOffset,
+        rootBox.size - rootBox.headerSize,
+        'trak'
+    );
+
+    for (const trak of tracks) {
+        const mdia = findDirectChildBox(moovView, trak.payloadOffset, trak.payloadSize, 'mdia');
+        if (!mdia) continue;
+
+        const hdlr = findDirectChildBox(moovView, mdia.payloadOffset, mdia.payloadSize, 'hdlr');
+        const handlerType = hdlr ? readFourCc(moovView, hdlr.payloadOffset + 8) : '';
+        if (handlerType && handlerType !== 'vide') continue;
+
+        const mdhd = findDirectChildBox(moovView, mdia.payloadOffset, mdia.payloadSize, 'mdhd');
+        const timescale = readMdhdTimescale(moovView, mdhd);
+        if (!timescale) continue;
+
+        const minf = findDirectChildBox(moovView, mdia.payloadOffset, mdia.payloadSize, 'minf');
+        if (!minf) continue;
+        const stbl = findDirectChildBox(moovView, minf.payloadOffset, minf.payloadSize, 'stbl');
+        if (!stbl) continue;
+        const stts = findDirectChildBox(moovView, stbl.payloadOffset, stbl.payloadSize, 'stts');
+        const frameRate = readSttsFrameRate(moovView, stts, timescale);
+        if (frameRate) return frameRate;
+    }
+
+    return null;
+}
+
+async function detectVideoFrameRateFromFile(file, boxesPromise = null) {
+    if (!looksLikeMp4(file)) return null;
+    const boxes = boxesPromise ? await boxesPromise : await walkTopLevelBoxes(file);
+    if (!Array.isArray(boxes) || boxes.length === 0) return null;
+    const moov = boxes.find(b => b.type === 'moov');
+    if (!moov || moov.size <= 0 || moov.size > MAX_FRAME_RATE_MOOV_BYTES) return null;
+
+    const moovBuffer = await file.slice(moov.fileOffset, moov.fileOffset + moov.size).arrayBuffer();
+    if (moovBuffer.byteLength !== moov.size) return null;
+    return extractVideoFrameRateFromMoov(new DataView(moovBuffer), moov.size);
+}
+
+function startFrameRateDetection(file, boxesPromise = null) {
+    if (!looksLikeMp4(file)) {
+        applyDetectedVideoFrameRate(null);
+        return;
+    }
+    const token = ++frameRateDetectionToken;
+    frameRateDetectionState = 'pending';
+    refreshFileDetails();
+    detectVideoFrameRateFromFile(file, boxesPromise)
+        .then(info => {
+            if (token !== frameRateDetectionToken || selectedFileName !== file.name) return;
+            applyDetectedVideoFrameRate(info, { updateForm: true });
+            saveToLocalStorage();
+        })
+        .catch(error => {
+            console.warn('[fps] failed to detect video frame rate:', error);
+            if (token === frameRateDetectionToken && selectedFileName === file.name) {
+                applyDetectedVideoFrameRate(null, { updateForm: true });
+            }
+        });
+}
+
 // moov 안의 stco(32bit) / co64(64bit) 청크 오프셋 테이블에 shift 더하기
 function shiftMoovChunkOffsets(moovView, moovTotalSize, shift) {
     let stcoCount = 0;
@@ -1977,8 +2371,8 @@ function shiftMoovChunkOffsets(moovView, moovTotalSize, shift) {
 }
 
 // faststart blob URL 생성. 필요 없거나 실패하면 null.
-async function makeFaststartBlobUrl(file) {
-    const boxes = await walkTopLevelBoxes(file);
+async function makeFaststartBlobUrl(file, topLevelBoxes = null) {
+    const boxes = topLevelBoxes || await walkTopLevelBoxes(file);
     if (!boxes.length) return null;
 
     const ftyp = boxes.find(b => b.type === 'ftyp');
@@ -2005,6 +2399,7 @@ async function makeFaststartBlobUrl(file) {
         throw new Error('moov 읽기 크기 불일치');
     }
     const moovView = new DataView(moovBuffer);
+    const frameRateInfo = extractVideoFrameRateFromMoov(moovView, moov.size);
 
     // moov가 새 위치(파일 앞)로 가면 mdat 등 모든 데이터가 moov.size만큼 뒤로 밀림
     const shift = moov.size;
@@ -2025,11 +2420,14 @@ async function makeFaststartBlobUrl(file) {
     }
 
     const newBlob = new Blob(parts, { type: file.type || 'video/mp4' });
-    return URL.createObjectURL(newBlob);
+    return {
+        url: URL.createObjectURL(newBlob),
+        frameRateInfo,
+    };
 }
 
 // faststart를 적용한 video URL을 반환. 실패/불필요 시 원본 blob URL.
-async function getVideoBlobUrl(file) {
+async function getVideoBlobUrl(file, boxesPromise = null) {
     if (!getAutoFaststart() || !looksLikeMp4(file)) {
         return { url: URL.createObjectURL(file), faststart: false };
     }
@@ -2043,10 +2441,15 @@ async function getVideoBlobUrl(file) {
     }
     try {
         setVideoLoadingStatus('faststart-analyzing');
-        const url = await makeFaststartBlobUrl(file);
-        if (url) {
+        const topLevelBoxes = boxesPromise ? await boxesPromise : null;
+        const faststartResult = await makeFaststartBlobUrl(file, topLevelBoxes);
+        if (faststartResult?.url) {
             setVideoLoadingStatus('ready');
-            return { url, faststart: true };
+            return {
+                url: faststartResult.url,
+                faststart: true,
+                frameRateInfo: faststartResult.frameRateInfo,
+            };
         }
         // 이미 faststart거나 MP4가 아니거나 비표준 → 원본 사용
         setVideoLoadingStatus('ready');
@@ -2554,15 +2957,18 @@ function initCustomControls() {
 
     // dur과 totalTime 텍스트는 거의 변하지 않아 캐시.
     let syncCachedDuration = NaN;
-    let syncCachedTotalText = '--:--';
+    let syncCachedFps = NaN;
+    let syncCachedTotalText = INVALID_TIMECODE;
     let syncLastCurText = '';
     function syncTime() {
         if (isScrubbing) return;
         const cur = Number.isFinite(video.currentTime) ? video.currentTime : 0;
         const dur = Number.isFinite(video.duration) ? video.duration : 0;
-        if (syncCachedDuration !== dur) {
+        const fps = getTimecodeFps();
+        if (syncCachedDuration !== dur || syncCachedFps !== fps) {
             syncCachedDuration = dur;
-            syncCachedTotalText = dur > 0 ? formatTime(dur) : '--:--';
+            syncCachedFps = fps;
+            syncCachedTotalText = dur > 0 ? formatTime(dur) : INVALID_TIMECODE;
             totalTimeEl.textContent = syncCachedTotalText;
             if (dur > 0) scrubber.max = String(dur);
         }
@@ -2623,6 +3029,12 @@ function initCustomControls() {
     video.addEventListener('timeupdate', scheduleSyncTime);
     video.addEventListener('durationchange', syncTime);
     video.addEventListener('loadedmetadata', syncTime);
+    document.addEventListener('timecodefpschange', () => {
+        syncCachedDuration = NaN;
+        syncCachedFps = NaN;
+        syncLastCurText = '';
+        syncTime();
+    });
     // 시킹/일시정지 등 응답성이 중요한 시점에는 즉시 동기화.
     video.addEventListener('seeked', () => {
         if (syncTimeRafId) { cancelAnimationFrame(syncTimeRafId); syncTimeRafId = 0; }
@@ -3149,7 +3561,16 @@ function initControls() {
                 videoInput.value = '';
                 return;
             }
+            flushPendingLocalStorageSave();
         }
+
+        resetFrameRateForFile(file);
+        const topLevelBoxesPromise = looksLikeMp4(file)
+            ? walkTopLevelBoxes(file).catch(error => {
+                console.warn('[mp4] failed to read top-level boxes:', error);
+                return null;
+            })
+            : Promise.resolve(null);
 
         updateFileInfo(file);
 
@@ -3180,7 +3601,7 @@ function initControls() {
 
         try {
             // faststart 적용된 URL 또는 원본 URL을 받음
-            const { url, faststart, status } = await getVideoBlobUrl(file);
+            const { url, faststart, status, frameRateInfo } = await getVideoBlobUrl(file, topLevelBoxesPromise);
             currentLoadedFaststartActive = faststart;
             if (currentVideoUrl) {
                 URL.revokeObjectURL(currentVideoUrl);
@@ -3195,6 +3616,16 @@ function initControls() {
                 // iPad 전용 안내를 다시 표시한다.
                 setVideoLoadingStatus('ios-faststart-skipped', formatFileSize(file.size));
             }
+            if (frameRateInfo) {
+                frameRateDetectionToken += 1;
+                applyDetectedVideoFrameRate(frameRateInfo, { updateForm: true });
+                saveToLocalStorage();
+            } else if (faststart) {
+                frameRateDetectionToken += 1;
+                applyDetectedVideoFrameRate(null, { updateForm: true });
+            } else {
+                startFrameRateDetection(file, topLevelBoxesPromise);
+            }
 
             if (!shouldDeferAutoPlay(file)) {
                 const playPromise = video.play();
@@ -3208,6 +3639,8 @@ function initControls() {
             console.error('영상 URL 생성 실패:', err);
             currentLoadedFaststartActive = false;
             currentLoadedFile = null;
+            frameRateDetectionToken += 1;
+            applyDetectedVideoFrameRate(null, { updateForm: true });
             setVideoLoadingStatus('error');
         } finally {
             videoInput.value = '';
@@ -3337,6 +3770,13 @@ function initSettings() {
     loadDarkMode();
 }
 
+function initStoragePersistence() {
+    window.addEventListener('beforeunload', flushPendingLocalStorageSave);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) flushPendingLocalStorageSave();
+    });
+}
+
 const STORAGE_PANEL_RATIO_TOP = 'timeline_panel_ratio_top';
 const STORAGE_PANEL_RATIO_BOTTOM = 'timeline_panel_ratio_bottom';
 const STORAGE_PANEL_RATIO_VERT = 'timeline_panel_ratio_vert';
@@ -3353,6 +3793,7 @@ initFullscreen();
 initPlaybackKeyboardShortcuts();
 initResizers();
 initPremiereTimelineKeyboard();
+initStoragePersistence();
 loadRecentFileInfo();
 
 function initPremiereTimelineKeyboard() {
@@ -3557,7 +3998,7 @@ function addHorizontalResizer({ getContainer, getCols, storageKey, designFilter 
             const newRatio = Math.max(0.1, Math.min(0.9, (e.clientX - containerLeft) / containerWidth));
             c.style.gridTemplateColumns = `minmax(0, ${newRatio}fr) minmax(0, ${1 - newRatio}fr)`;
             update();
-            renderPremiereTimeline();
+            schedulePremiereTimelineRender();
         });
 
         function endDrag(e) {
@@ -3652,7 +4093,7 @@ function addVerticalResizer({ getContainer, getRows, storageKey, designFilter })
             rows[0].style.flex = `${newRatio} 1 0`;
             rows[1].style.flex = `${1 - newRatio} 1 0`;
             update();
-            renderPremiereTimeline();
+            schedulePremiereTimelineRender();
         });
 
         function endDrag(e) {

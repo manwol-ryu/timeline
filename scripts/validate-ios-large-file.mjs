@@ -29,9 +29,9 @@ assert(app.includes('function shouldDeferAutoPlay(file)'), 'iOS large-file autop
 assert(app.includes("case 'ios-faststart-skipped'"), 'specific iOS faststart-skipped status message exists');
 assert(app.includes('iPad에서는 브라우저 안에서 faststart를 가상 적용하지 않습니다'), 'status explains that iPad browser-side virtual faststart is skipped');
 
-const getVideoBlobUrl = sourceBetween(app, 'async function getVideoBlobUrl(file)', '// MP4 파일의 첫 부분을 읽어');
+const getVideoBlobUrl = sourceBetween(app, 'async function getVideoBlobUrl(file', '// MP4 파일의 첫 부분을 읽어');
 const skipIndex = getVideoBlobUrl.indexOf('shouldSkipInBrowserFaststart(file)');
-const remuxIndex = getVideoBlobUrl.indexOf('makeFaststartBlobUrl(file)');
+const remuxIndex = getVideoBlobUrl.indexOf('makeFaststartBlobUrl(file');
 assert(skipIndex !== -1, 'getVideoBlobUrl checks shouldSkipInBrowserFaststart');
 assert(remuxIndex !== -1, 'getVideoBlobUrl still calls makeFaststartBlobUrl for supported files');
 assert(skipIndex !== -1 && remuxIndex !== -1 && skipIndex < remuxIndex, 'iOS large-file skip happens before in-browser remux');

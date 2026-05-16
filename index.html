@@ -276,9 +276,9 @@
                                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                             </svg>
                         </button>
-                        <span id="customCurrentTime" class="custom-controls-time">00:00</span>
+                        <span id="customCurrentTime" class="custom-controls-time">00:00:00:00</span>
                         <input type="range" id="customScrubber" class="custom-controls-scrubber" min="0" max="0" step="0.01" value="0" aria-label="재생 위치">
-                        <span id="customTotalTime" class="custom-controls-time">--:--</span>
+                        <span id="customTotalTime" class="custom-controls-time">--:--:--:--</span>
                     </div>
                     <button id="fullscreenButton" class="player-fab" type="button" aria-label="전체화면 보기">
                         <svg id="fullscreenIconEnter" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -318,7 +318,7 @@
                     <div class="video-info">
                         <div class="video-time">
                             <span class="video-time-label">현재 / 전체</span>
-                            <span id="timeBadge" class="time-badge">00:00 / --:--</span>
+                            <span id="timeBadge" class="time-badge">00:00:00:00 / --:--:--:--</span>
                         </div>
                         <div class="quick-buttons" aria-label="빠른 위치 지정">
                             <button class="ghost" data-set-from-video="start">현재 위치를 시작에</button>
@@ -330,12 +330,12 @@
 
                     <div class="form-grid">
                         <div>
-                            <label for="startTime">시작 (mm:ss 혹은 초)</label>
-                            <input type="text" id="startTime" placeholder="00:00">
+                            <label for="startTime">시작 (HH:MM:SS:FF 혹은 초)</label>
+                            <input type="text" id="startTime" placeholder="00:00:00:00">
                         </div>
                         <div>
-                            <label for="endTime">종료 (mm:ss 혹은 초)</label>
-                            <input type="text" id="endTime" placeholder="00:00">
+                            <label for="endTime">종료 (HH:MM:SS:FF 혹은 초)</label>
+                            <input type="text" id="endTime" placeholder="00:00:00:00">
                         </div>
                         <div>
                             <label for="segmentColor">표시 색상</label>
