@@ -2954,8 +2954,10 @@ function initPlaybackKeyboardShortcuts() {
     const SEEK_FORWARD_LONG_KEY_CODE = 'KeyF';
     const SEEK_BACKWARD_KEY_CODE = 'KeyJ';
     const SEEK_FORWARD_KEY_CODE = 'KeyL';
+    const QUICK_MEMO_KEY_CODE = 'KeyM';
     const SHORT_SEEK_SECONDS = 5;
     const LONG_SEEK_SECONDS = 10;
+    const QUICK_MEMO_SECONDS = 10;
     let isTemporaryKeyActive = false;
     let seekIndicatorTimer = null;
 
@@ -3031,6 +3033,14 @@ function initPlaybackKeyboardShortcuts() {
         if (e.code === SEEK_FORWARD_LONG_KEY_CODE || e.code === SEEK_FORWARD_KEY_CODE) {
             e.preventDefault();
             if (seekVideoBy(LONG_SEEK_SECONDS)) showSeekShortcutIndicator(`+${LONG_SEEK_SECONDS}초`, 'right');
+            return;
+        }
+
+        if (e.code === QUICK_MEMO_KEY_CODE) {
+            e.preventDefault();
+            if (!e.repeat) {
+                addQuickMemoFromCurrent(QUICK_MEMO_SECONDS, '현재 위치부터 10초 메모 추가 완료', false);
+            }
         }
     });
 
@@ -3044,6 +3054,34 @@ function initPlaybackKeyboardShortcuts() {
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) endKeyboardFastForward();
     });
+}
+
+function addQuickMemoFromCurrent(durationSeconds, statusMessage, alertOnMissing = true) {
+    if (!video.src || !Number.isFinite(video.currentTime)) {
+        if (alertOnMissing) alert('영상이 로드되지 않았습니다.');
+        else showFormStatus('영상이 로드되지 않았습니다');
+        return false;
+    }
+
+    const currentTime = video.currentTime;
+    const endTime = currentTime + durationSeconds;
+
+    const data = {
+        id: crypto.randomUUID(),
+        title: segmentTitle.value.trim() || '제목 없음',
+        start: currentTime,
+        end: Math.min(endTime, totalDuration > 0 ? totalDuration : endTime),
+        tag: segmentTag.value.trim(),
+        color: segmentColor.value,
+        note: '',
+    };
+
+    recordTimelineHistory();
+    segments.push(normalizeSegment(data));
+    showFormStatus(statusMessage);
+    resetForm();
+    renderAll();
+    return true;
 }
 
 function initControls() {
@@ -3075,29 +3113,7 @@ function initControls() {
 
     // 현재 장면 메모 추가 버튼
     document.getElementById('quickAddMemo').addEventListener('click', () => {
-        if (!Number.isFinite(video.currentTime)) {
-            alert('영상이 로드되지 않았습니다.');
-            return;
-        }
-
-        const currentTime = video.currentTime;
-        const endTime = currentTime + 5;
-
-        const data = {
-            id: crypto.randomUUID(),
-            title: segmentTitle.value.trim() || '제목 없음',
-            start: currentTime,
-            end: Math.min(endTime, totalDuration > 0 ? totalDuration : endTime),
-            tag: segmentTag.value.trim(),
-            color: segmentColor.value,
-            note: '',
-        };
-
-        recordTimelineHistory();
-        segments.push(normalizeSegment(data));
-        showFormStatus('현재 장면 메모 추가 완료');
-        resetForm();
-        renderAll();
+        addQuickMemoFromCurrent(5, '현재 장면 메모 추가 완료');
     });
 
     let searchDebounceTimer = null;
