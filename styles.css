@@ -280,7 +280,7 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    bottom: 70px;
+    bottom: 0;
     display: flex;
     z-index: 2;
     -webkit-user-select: none;
@@ -300,13 +300,7 @@ body {
     position: relative;
 }
 
-/* CSS 확대 모드에서는 네이티브 컨트롤을 숨기고 커스텀 바를 쓰므로
-   제스처 오버레이를 바닥까지 확장해 화면 전 영역에서 탭 인식 */
-.video-frame.is-expanded .gesture-overlay {
-    bottom: 0;
-}
-
-/* 커스텀 컨트롤 바 — CSS 확대 모드 전용 */
+/* 커스텀 컨트롤 바 */
 .custom-controls-bar {
     position: absolute;
     left: 0;
@@ -314,7 +308,7 @@ body {
     bottom: 0;
     height: 56px;
     padding: 0 16px;
-    display: none;
+    display: flex;
     align-items: center;
     gap: 10px;
     color: #fff;
@@ -323,10 +317,6 @@ body {
     pointer-events: none;
     transition: opacity 0.18s ease;
     background: transparent;
-}
-
-.video-frame.is-expanded .custom-controls-bar {
-    display: flex;
 }
 
 .custom-controls-bar.is-visible {
@@ -620,7 +610,7 @@ body.is-video-expanded {
 
 .file-thumbnail-wrap {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: var(--thumbnail-aspect, 16 / 9);
     border-radius: clamp(10px, 0.8vw, 14px);
     overflow: hidden;
     background: #0b1220;
@@ -1020,6 +1010,34 @@ textarea {
     color: var(--text);
 }
 
+.settings-tabs {
+    display: flex;
+    gap: 8px;
+    margin: 0 0 22px 0;
+    padding: 4px;
+    background: var(--panel-muted);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+}
+
+.settings-tab-button {
+    flex: 1;
+    min-height: 40px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-subtle);
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-tab-button.is-active {
+    background: var(--panel);
+    color: var(--accent);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.12);
+}
+
 .close-button {
     width: 20px;
     height: 30px;
@@ -1077,6 +1095,49 @@ textarea {
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+.shortcut-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 12px 14px;
+    background: var(--panel-muted);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    color: var(--text);
+    font-size: 0.9rem;
+}
+
+.shortcut-keys {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.shortcut-row kbd {
+    min-width: 30px;
+    height: 28px;
+    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    background: var(--panel);
+    color: var(--text);
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.12);
 }
 
 .cache-info {
@@ -1927,9 +1988,10 @@ textarea {
 }
 
 [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: stretch;
+    flex-flow: row wrap;
+    justify-content: center;
+    align-items: center;
+    align-content: center;
 }
 
 /* Timeline 패널: 멀티트랙 룩 */
@@ -2176,8 +2238,14 @@ textarea {
         flex: none;
     }
     [data-design="premiere"] .premiere-bottom-zone {
-        grid-template-columns: 1fr;
-        grid-auto-rows: auto;
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        min-height: 0;
+        max-height: none;
+        overflow: visible;
+        container-name: none;
+        container-type: normal;
         flex: none;
     }
     [data-design="premiere"] #premiereBottomZone > #uploadCard,
@@ -2185,11 +2253,15 @@ textarea {
     [data-design="premiere"] #premiereBottomZone > #timelinePanel {
         grid-column: 1;
         grid-row: auto;
+        height: auto;
     }
     [data-design="premiere"] .video-panel,
     [data-design="premiere"] #editorPanel,
     [data-design="premiere"] #premiereBottomZone > #timelinePanel {
         min-height: 360px;
+    }
+    [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
+        min-height: 150px;
     }
 }
 
@@ -2763,19 +2835,20 @@ body.is-resizing .panel-resizer {
 
 /* ─── Project · Loaded 패널 (fileInfoCard) 정리 ─── */
 [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
-    gap: clamp(5px, 1cqh, 10px);
-    padding: clamp(30px, 4cqh, 36px) clamp(8px, 1cqw, 14px) clamp(8px, 1.5cqh, 14px);
+    gap: clamp(8px, 1.2cqw, 16px);
+    padding: clamp(30px, 4cqh, 38px) clamp(8px, 1.4cqw, 16px) clamp(8px, 1.5cqh, 14px);
+    text-align: left;
 }
 
 [data-design="premiere"] #fileInfoCard .file-meta {
     flex-direction: column;
-    align-items: center;
-    gap: clamp(4px, 1cqh, 8px);
-    width: 100%;
-    max-width: 280px;
-    margin: 0 auto;
+    align-items: flex-start;
+    gap: clamp(5px, 1cqh, 10px);
+    width: auto;
+    max-width: none;
+    margin: 0;
     min-width: 0;
-    flex: 0 1 auto;
+    flex: 1 1 0;
 }
 
 [data-design="premiere"] #fileInfoCard .file-meta > div:first-child {
@@ -2784,41 +2857,45 @@ body.is-resizing .panel-resizer {
 }
 
 [data-design="premiere"] #fileInfoCard .file-thumbnail-wrap {
-    width: 100%;
-    max-width: 280px;
-    max-height: clamp(54px, 10cqh, 118px);
-    margin: 0 auto;
+    width: clamp(104px, 42%, 320px);
+    max-width: 44%;
+    max-height: calc(100cqh - 54px);
+    margin: 0;
     border-radius: 4px;
     flex: 0 1 auto;
 }
 
+[data-design="premiere"] #fileInfoCard #videoLoadingStatus,
 [data-design="premiere"] #fileInfoCard .video-loading-progress {
-    width: 100%;
-    max-width: 280px;
-    margin: 0 auto;
-    flex-shrink: 0;
+    display: none !important;
 }
 
-[data-design="premiere"] #fileInfoCard #videoLoadingStatus,
 [data-design="premiere"] #fileInfoCard #convertStatus {
+    flex: 0 0 100%;
     width: 100%;
-    max-width: 280px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
     text-align: center;
     line-height: 1.35;
 }
 
+[data-design="premiere"] #fileInfoCard #convertStatus:empty {
+    display: none;
+}
+
 [data-design="premiere"] #fileInfoCard .file-actions {
     display: flex;
-    gap: 6px;
-    justify-content: center;
+    gap: 8px;
+    justify-content: flex-start;
     width: 100%;
+    min-width: 0;
 }
 
 [data-design="premiere"] #fileInfoCard .file-actions button {
     flex: 1;
-    max-width: 120px;
-    height: 30px;
+    min-width: 0;
+    max-width: 150px;
+    height: 32px;
     font-size: 11px;
 }
 
@@ -2826,17 +2903,17 @@ body.is-resizing .panel-resizer {
     font-size: 9px;
     letter-spacing: 0.16em;
     color: var(--text-subtle);
-    text-align: center;
+    text-align: left;
 }
 
 [data-design="premiere"] #fileInfoCard .file-name {
-    font-size: 13px;
+    font-size: clamp(13px, 1cqw, 18px);
     line-height: 1.25;
     max-height: 2.5em;
     color: var(--premiere-text-strong);
     overflow: hidden;
     overflow-wrap: anywhere;
-    text-align: center;
+    text-align: left;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -2844,26 +2921,29 @@ body.is-resizing .panel-resizer {
 
 [data-design="premiere"] #fileInfoCard .file-size {
     font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
-    font-size: 11px;
+    font-size: clamp(10px, 0.75cqw, 12px);
     color: var(--text-subtle);
-    text-align: center;
+    text-align: left;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    width: 100%;
 }
 
 @container premiere-bottom (max-height: 260px) {
     [data-design="premiere"] #premiereBottomZone > #fileInfoCard {
-        gap: 5px;
-        padding: 30px 10px 8px;
+        gap: 8px;
+        padding: 30px 8px 8px;
     }
 
     [data-design="premiere"] #fileInfoCard .file-thumbnail-wrap {
-        display: none;
+        width: clamp(88px, 38%, 220px);
+        max-width: 40%;
+        max-height: calc(100cqh - 44px);
     }
 
     [data-design="premiere"] #fileInfoCard .file-meta {
-        gap: 5px;
+        gap: 4px;
     }
 
     [data-design="premiere"] #fileInfoCard .file-actions button {
@@ -2871,7 +2951,6 @@ body.is-resizing .panel-resizer {
         padding: 0 8px !important;
     }
 
-    [data-design="premiere"] #fileInfoCard #videoLoadingStatus,
     [data-design="premiere"] #fileInfoCard #convertStatus {
         font-size: 10px;
         line-height: 1.25;

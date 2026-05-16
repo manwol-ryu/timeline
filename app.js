@@ -74,6 +74,12 @@ let _premiereOriginalParents = null;
 let premiereTimelineZoom = 8; // px per second (default)
 const PREMIERE_TIMELINE_ZOOM_MIN = 0.5;
 const PREMIERE_TIMELINE_ZOOM_MAX = 600;
+const TIMELINE_HISTORY_LIMIT = 80;
+const TIMELINE_FOCUS_FRACTION = 0.6;
+
+let undoStack = [];
+let redoStack = [];
+let isRestoringTimelineHistory = false;
 
 function getDesign() {
     const stored = localStorage.getItem(STORAGE_DESIGN);
@@ -295,6 +301,7 @@ function buildPremiereTimelineDom() {
             detail.hidden = true;
         } else if (action === 'delete') {
             if (!confirm('이 구간 메모를 삭제할까요?')) return;
+            recordTimelineHistory();
             segments = segments.filter(item => item.id !== seg.id);
             finishEditing();
             renderAll();
@@ -371,6 +378,56 @@ function computeMemoTracks(segs) {
 function getTimelinePixelsPerSecond() {
     if (!Number.isFinite(totalDuration) || totalDuration <= 0) return 0;
     return premiereTimelineZoom;
+}
+
+function syncPremiereZoomControls() {
+    const view = document.getElementById('premiereTimelineView');
+    if (!view) return;
+    if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+    const zoomLabel = view.querySelector('.premiere-tl-zoom-level');
+    if (zoomLabel) zoomLabel.textContent = `${premiereTimelineZoom.toFixed(1)} px/s`;
+}
+
+function setPremiereTimelineZoom(value, { render = true } = {}) {
+    const minZoom = getEffectiveMinZoom();
+    const next = Math.max(minZoom, Math.min(PREMIERE_TIMELINE_ZOOM_MAX, Number(value) || minZoom));
+    premiereTimelineZoom = next;
+    syncPremiereZoomControls();
+    if (render) renderPremiereTimeline();
+    return next;
+}
+
+function focusPremiereTimelineOnSegment(seg) {
+    if (!seg || !isPremiereDesign()) return;
+    const view = ensurePremiereTimelineView();
+    if (!view || !Number.isFinite(totalDuration) || totalDuration <= 0) return;
+    if (!Number.isFinite(seg.start) || !Number.isFinite(seg.end) || seg.end <= seg.start) return;
+
+    const tracksArea = view.querySelector('.premiere-tl-tracks-area');
+    const headers = view.querySelector('.premiere-tl-headers');
+    if (!tracksArea || !headers) return;
+
+    const visibleWidth = Math.max(120, tracksArea.clientWidth - headers.offsetWidth - 8);
+    const segmentDuration = Math.max(0.1, seg.end - seg.start);
+    setPremiereTimelineZoom((visibleWidth * TIMELINE_FOCUS_FRACTION) / segmentDuration);
+
+    requestAnimationFrame(() => {
+        const updatedView = document.getElementById('premiereTimelineView');
+        const updatedTracksArea = updatedView?.querySelector('.premiere-tl-tracks-area');
+        const updatedHeaders = updatedView?.querySelector('.premiere-tl-headers');
+        if (!updatedTracksArea || !updatedHeaders) return;
+
+        const pxPerSec = getTimelinePixelsPerSecond();
+        const updatedVisibleWidth = Math.max(120, updatedTracksArea.clientWidth - updatedHeaders.offsetWidth - 8);
+        const centerPx = ((seg.start + seg.end) / 2) * pxPerSec;
+        updatedTracksArea.scrollLeft = Math.max(0, centerPx - (updatedVisibleWidth / 2));
+
+        updatedView.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
+        const focusedClip = Array.from(updatedView.querySelectorAll('.premiere-tl-clip.memo-clip'))
+            .find(c => String(c.dataset.id) === String(seg.id));
+        if (focusedClip) focusedClip.classList.add('selected');
+        openPremiereClipDetail(seg.id);
+    });
 }
 
 function renderPremiereTimeline() {
@@ -488,9 +545,7 @@ function renderPremiereTimeline() {
                     return;
                 }
                 e.stopPropagation();
-                view.querySelectorAll('.premiere-tl-clip.selected').forEach(c => c.classList.remove('selected'));
-                clip.classList.add('selected');
-                openPremiereClipDetail(seg.id);
+                focusPremiereTimelineOnSegment(seg);
             });
             attachClipDragHandlers(clip, seg);
             trackEl.appendChild(clip);
@@ -740,14 +795,16 @@ function attachTimelineWheelZoom(view) {
     }, { passive: false });
 }
 
-function autoFitPremiereTimeline() {
-    const view = document.getElementById('premiereTimelineView');
+function autoFitPremiereTimeline(force = false) {
+    const view = isPremiereDesign() ? ensurePremiereTimelineView() : document.getElementById('premiereTimelineView');
     if (!view || !isPremiereDesign() || totalDuration <= 0) return;
     // 현재 줌이 effective min보다 작으면 fit으로 설정
     const minZoom = getEffectiveMinZoom();
-    if (premiereTimelineZoom < minZoom * 1.001 || premiereTimelineZoom < 1) {
+    if (force || premiereTimelineZoom < minZoom * 1.001 || premiereTimelineZoom < 1) {
         premiereTimelineZoom = minZoom;
-        if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+        syncPremiereZoomControls();
+        const tracksArea = view.querySelector('.premiere-tl-tracks-area');
+        if (tracksArea) tracksArea.scrollLeft = 0;
     }
 }
 
@@ -769,6 +826,7 @@ function attachClipDragHandlers(clip, seg) {
     let origStart = 0;
     let origEnd = 0;
     let pxPerSec = 1;
+    let dragHistorySnapshot = null;
 
     function onPointerDown(e) {
         if (e.button !== undefined && e.button !== 0) return;
@@ -780,6 +838,7 @@ function attachClipDragHandlers(clip, seg) {
         origStart = seg.start;
         origEnd = seg.end;
         pxPerSec = getTimelinePixelsPerSecond() || 1;
+        dragHistorySnapshot = getTimelineHistorySnapshot();
         clip.classList.add('is-dragging');
         clip.setPointerCapture?.(e.pointerId);
         e.stopPropagation();
@@ -824,7 +883,11 @@ function attachClipDragHandlers(clip, seg) {
         clip.releasePointerCapture?.(e.pointerId);
         // click 이벤트가 먼저 발생할 시간을 줘서 dragHappened 플래그를 검사할 수 있게 함
         setTimeout(() => {
-            if (wasDrag) saveToLocalStorage();
+            if (wasDrag) {
+                pushTimelineHistorySnapshot(dragHistorySnapshot);
+                saveToLocalStorage();
+            }
+            dragHistorySnapshot = null;
             renderAll();
         }, 0);
     }
@@ -1094,6 +1157,66 @@ function normalizeSegment(segment) {
     return normalized;
 }
 
+function cloneTimelineSegments(source = segments) {
+    return source.map(({ _searchIndex, ...segment }) => ({ ...segment }));
+}
+
+function getTimelineHistorySnapshot() {
+    return {
+        segments: cloneTimelineSegments(),
+        totalDuration,
+    };
+}
+
+function pushTimelineHistorySnapshot(snapshot) {
+    if (isRestoringTimelineHistory || !snapshot) return;
+    undoStack.push(snapshot);
+    if (undoStack.length > TIMELINE_HISTORY_LIMIT) undoStack.shift();
+    redoStack = [];
+}
+
+function recordTimelineHistory() {
+    pushTimelineHistorySnapshot(getTimelineHistorySnapshot());
+}
+
+function resetTimelineHistory() {
+    undoStack = [];
+    redoStack = [];
+}
+
+function restoreTimelineHistory(snapshot, message) {
+    if (!snapshot) return;
+    isRestoringTimelineHistory = true;
+    segments = cloneTimelineSegments(snapshot.segments || [])
+        .map(normalizeSegment)
+        .filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
+    if (typeof snapshot.totalDuration === 'number' && Number.isFinite(snapshot.totalDuration)) {
+        totalDuration = snapshot.totalDuration;
+    }
+    finishEditing();
+    renderAll();
+    isRestoringTimelineHistory = false;
+    if (message) showFormStatus(message);
+}
+
+function undoTimelineAction() {
+    if (undoStack.length === 0) {
+        showFormStatus('되돌릴 작업이 없습니다');
+        return;
+    }
+    redoStack.push(getTimelineHistorySnapshot());
+    restoreTimelineHistory(undoStack.pop(), '작업 되돌림');
+}
+
+function redoTimelineAction() {
+    if (redoStack.length === 0) {
+        showFormStatus('다시 적용할 작업이 없습니다');
+        return;
+    }
+    undoStack.push(getTimelineHistorySnapshot());
+    restoreTimelineHistory(redoStack.pop(), '작업 다시 적용');
+}
+
 function renderSegments(filterText = '') {
     segmentsList.innerHTML = '';
     const keyword = filterText.trim().toLowerCase();
@@ -1170,6 +1293,7 @@ function renderSegments(filterText = '') {
         deleteButton.textContent = '삭제';
         deleteButton.addEventListener('click', () => {
             if (!confirm('이 구간 메모를 삭제할까요?')) return;
+            recordTimelineHistory();
             segments = segments.filter(item => item.id !== segment.id);
             finishEditing();
             renderAll();
@@ -1279,6 +1403,7 @@ function gatherFormData() {
 function saveSegment() {
     const data = gatherFormData();
     if (!data) return;
+    recordTimelineHistory();
     if (editingId) {
         segments = segments.map(item => (item.id === editingId ? normalizeSegment({ ...item, ...data }) : item));
         showFormStatus('수정 완료');
@@ -1365,6 +1490,7 @@ function importJsonFile(file) {
         try {
             const payload = JSON.parse(event.target.result);
             const importedSegments = Array.isArray(payload.segments) ? payload.segments : [];
+            recordTimelineHistory();
             segments = importedSegments
                 .map(normalizeSegment)
                 .filter(segment => Number.isFinite(segment.start) && Number.isFinite(segment.end));
@@ -1394,6 +1520,7 @@ function importJsonFile(file) {
 function clearAll() {
     if (segments.length === 0) return;
     if (!confirm('등록된 모든 메모를 삭제할까요?')) return;
+    recordTimelineHistory();
     segments = [];
     if (selectedFileName) {
         localStorage.removeItem(STORAGE_KEY_PREFIX + selectedFileName);
@@ -1445,6 +1572,7 @@ function loadFromLocalStorage(fileName) {
         }
 
         renderAll();
+        resetTimelineHistory();
 
         if (segments.length > 0) {
             showFormStatus(`저장된 타임라인 ${segments.length}개 불러왔습니다`);
@@ -2075,7 +2203,7 @@ function initVideoEvents() {
         totalDuration = Number.isFinite(video.duration) ? video.duration : 0;
         setTimeBadge();
         // Premiere 타임라인은 처음 로드 시 자동 fit (전체 영상이 보이도록)
-        autoFitPremiereTimeline();
+        autoFitPremiereTimeline(true);
         renderTimeline();
         renderPremiereTimeline();
         resetForm();
@@ -2153,6 +2281,7 @@ function captureVideoThumbnail() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
         fileThumbnailImg.src = dataUrl;
+        fileThumbnailWrap.style.setProperty('--thumbnail-aspect', `${video.videoWidth} / ${video.videoHeight}`);
         fileThumbnailWrap.hidden = false;
     } catch (err) {
         // 보안 정책으로 캡처 실패 시 무시
@@ -2160,7 +2289,208 @@ function captureVideoThumbnail() {
     }
 }
 
-// CSS 확대 모드 전용 커스텀 컨트롤 바.
+function isEditableTarget(target) {
+    const tag = (target?.tagName || '').toLowerCase();
+    return tag === 'input' || tag === 'textarea' || target?.isContentEditable;
+}
+
+function isSettingsModalOpen() {
+    const modal = document.getElementById('settingsModal');
+    return !!(modal && modal.classList.contains('is-open'));
+}
+
+const PLAYBACK_RATE_STEP = 0.25;
+const PLAYBACK_RATE_MIN = 0.25;
+const PLAYBACK_RATE_MAX = 4;
+const TEMP_FAST_FORWARD_RATE = 2;
+const RATE_RESTORE_DELAY = 140;
+
+function clampPlaybackRate(rate) {
+    if (!Number.isFinite(rate)) return 1;
+    return Math.min(PLAYBACK_RATE_MAX, Math.max(PLAYBACK_RATE_MIN, Math.round(rate * 4) / 4));
+}
+
+function formatPlaybackRate(rate) {
+    const rounded = Math.round(rate * 100) / 100;
+    return `${Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(2).replace(/0$/, '')}x`;
+}
+
+function seekVideoBy(deltaSeconds) {
+    if (!video.src || !Number.isFinite(video.currentTime)) return false;
+    const duration = Number.isFinite(video.duration) ? video.duration : totalDuration;
+    let next = video.currentTime + deltaSeconds;
+    if (Number.isFinite(duration) && duration > 0) {
+        // iOS Safari가 정확히 duration으로 시킹되면 끝에서 멈추거나
+        // 처음으로 되감기는 경우가 있어 살짝 안쪽으로 클램프.
+        next = Math.min(Math.max(0, duration - 0.25), next);
+    }
+    next = Math.max(0, next);
+    seekVideoTo(next);
+    return true;
+}
+
+function seekVideoTo(target) {
+    if (!Number.isFinite(target)) return;
+    if (Math.abs(target - (video.currentTime || 0)) < 0.05) return;
+    if (typeof video.fastSeek === 'function') {
+        try { video.fastSeek(target); return; } catch (_) {}
+    }
+    video.currentTime = target;
+}
+
+const playbackSpeed = (() => {
+    const activeTemporarySources = new Set();
+    let restoreRate = 1;
+    let wasPausedAtTemporaryStart = false;
+    let indicatorTimer = null;
+    let pendingRateRestoreTimer = null;
+
+    function getIndicator() {
+        return document.getElementById('speedIndicator');
+    }
+
+    function enablePitchPreservation() {
+        // 브라우저별 음정 보존 플래그를 모두 켠다.
+        // (Safari: webkitPreservesPitch, Firefox: mozPreservesPitch)
+        const pitchProps = ['preservesPitch', 'webkitPreservesPitch', 'mozPreservesPitch'];
+        pitchProps.forEach((prop) => {
+            if (prop in video) {
+                try { video[prop] = true; } catch (_) {}
+            }
+        });
+    }
+
+    function setPlaybackRateIfChanged(newRate) {
+        const safeRate = clampPlaybackRate(newRate);
+        const current = video.playbackRate || 1;
+        if (Math.abs(current - safeRate) < 0.001) return true;
+        try {
+            video.playbackRate = safeRate;
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function showIndicator(rate, persistent = false) {
+        const indicator = getIndicator();
+        if (!indicator) return;
+        clearTimeout(indicatorTimer);
+        indicator.textContent = formatPlaybackRate(rate);
+        indicator.classList.add('is-active');
+        if (!persistent) {
+            indicatorTimer = setTimeout(() => {
+                indicator.classList.remove('is-active');
+            }, 900);
+        }
+    }
+
+    function hideIndicator() {
+        const indicator = getIndicator();
+        if (!indicator) return;
+        clearTimeout(indicatorTimer);
+        indicatorTimer = null;
+        indicator.classList.remove('is-active');
+    }
+
+    function cancelPendingRateRestore() {
+        if (!pendingRateRestoreTimer) return;
+        clearTimeout(pendingRateRestoreTimer);
+        pendingRateRestoreTimer = null;
+    }
+
+    function startTemporaryFastForward(source) {
+        if (!video.src || !Number.isFinite(video.duration)) return false;
+        cancelPendingRateRestore();
+        if (activeTemporarySources.has(source)) {
+            showIndicator(TEMP_FAST_FORWARD_RATE, true);
+            return true;
+        }
+        activeTemporarySources.add(source);
+        if (activeTemporarySources.size > 1) {
+            showIndicator(TEMP_FAST_FORWARD_RATE, true);
+            return true;
+        }
+        restoreRate = video.playbackRate || 1;
+        wasPausedAtTemporaryStart = video.paused;
+        if (!setPlaybackRateIfChanged(TEMP_FAST_FORWARD_RATE)) {
+            activeTemporarySources.delete(source);
+            return false;
+        }
+        showIndicator(TEMP_FAST_FORWARD_RATE, true);
+        if (video.paused) {
+            video.play().catch(() => {});
+        }
+        return true;
+    }
+
+    function endTemporaryFastForward(source) {
+        if (!activeTemporarySources.has(source)) return;
+        activeTemporarySources.delete(source);
+        if (activeTemporarySources.size > 0) return;
+
+        if (wasPausedAtTemporaryStart && !video.paused) {
+            video.pause();
+        }
+        cancelPendingRateRestore();
+        pendingRateRestoreTimer = setTimeout(() => {
+            requestAnimationFrame(() => {
+                setPlaybackRateIfChanged(restoreRate || 1);
+                pendingRateRestoreTimer = null;
+                hideIndicator();
+            });
+        }, RATE_RESTORE_DELAY);
+    }
+
+    function abortTemporaryFastForward() {
+        if (activeTemporarySources.size === 0) return;
+        activeTemporarySources.clear();
+        cancelPendingRateRestore();
+        if (wasPausedAtTemporaryStart && !video.paused) {
+            video.pause();
+        }
+        setPlaybackRateIfChanged(restoreRate || 1);
+        hideIndicator();
+    }
+
+    function adjustRate(delta) {
+        if (!video.src) return false;
+        const baseRate = activeTemporarySources.size > 0 ? restoreRate : (video.playbackRate || 1);
+        const nextRate = clampPlaybackRate(baseRate + delta);
+        if (activeTemporarySources.size > 0) {
+            restoreRate = nextRate;
+            showIndicator(TEMP_FAST_FORWARD_RATE, true);
+            return true;
+        }
+        cancelPendingRateRestore();
+        if (!setPlaybackRateIfChanged(nextRate)) return false;
+        showIndicator(nextRate);
+        return true;
+    }
+
+    function setRate(rate) {
+        if (!video.src) return false;
+        if (activeTemporarySources.size > 0) {
+            abortTemporaryFastForward();
+        }
+        cancelPendingRateRestore();
+        const nextRate = clampPlaybackRate(rate);
+        if (!setPlaybackRateIfChanged(nextRate)) return false;
+        showIndicator(nextRate);
+        return true;
+    }
+
+    return {
+        enablePitchPreservation,
+        startTemporaryFastForward,
+        endTemporaryFastForward,
+        abortTemporaryFastForward,
+        adjustRate,
+        setRate,
+    };
+})();
+
+// 커스텀 컨트롤 바.
 // 외부(setExpanded, handleZoneInteraction)에서 호출할 수 있도록 모듈 객체를 노출.
 const customControls = {
     show: () => {},
@@ -2191,17 +2521,21 @@ function initCustomControls() {
     function scheduleAutoHide() {
         clearHideTimer();
         if (!video.paused && bar.classList.contains('is-visible') && !isScrubbing) {
-            hideTimer = setTimeout(() => bar.classList.remove('is-visible'), AUTO_HIDE_MS);
+            hideTimer = setTimeout(hide, AUTO_HIDE_MS);
         }
     }
 
     function show() {
+        if (!video.src) return;
+        video.removeAttribute('controls');
         bar.classList.add('is-visible');
+        bar.setAttribute('aria-hidden', 'false');
         scheduleAutoHide();
     }
 
     function hide() {
         bar.classList.remove('is-visible');
+        bar.setAttribute('aria-hidden', 'true');
         clearHideTimer();
     }
 
@@ -2300,6 +2634,20 @@ function initCustomControls() {
     customControls.toggle = toggle;
     customControls.isVisible = isVisible;
 
+    video.removeAttribute('controls');
+    videoFrame.addEventListener('pointerenter', (e) => {
+        if (e.pointerType === 'mouse') show();
+    });
+    videoFrame.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'mouse' && video.src) {
+            if (!bar.classList.contains('is-visible')) show();
+            else scheduleAutoHide();
+        }
+    });
+    videoFrame.addEventListener('pointerleave', (e) => {
+        if (e.pointerType === 'mouse' && !isScrubbing) hide();
+    });
+
     syncPlayState();
     syncTime();
 }
@@ -2330,13 +2678,12 @@ function initFullscreen() {
         videoFrame.classList.toggle('is-expanded', expanded);
         document.body.classList.toggle('is-video-expanded', expanded);
         if (expanded) {
-            // 확대 모드: 네이티브 컨트롤(중앙 ▶ + 디밍 + PiP/AirPlay/풀스크린 버튼)을
-            // 모두 끄고 우리가 만든 커스텀 바만 사용.
+            // 확대 모드: 네이티브 컨트롤 대신 우리가 만든 커스텀 바만 사용.
             video.removeAttribute('controls');
             customControls.hide();
         } else {
-            // 일반 모드: 네이티브 컨트롤 복원, 커스텀 바 숨김
-            video.setAttribute('controls', '');
+            // 일반 모드도 커스텀 바를 사용해 브라우저 컨트롤 디밍을 피한다.
+            video.removeAttribute('controls');
             customControls.hide();
         }
         syncButtonState();
@@ -2412,48 +2759,31 @@ function initFullscreen() {
 function initGestures() {
     const overlay = document.getElementById('gestureOverlay');
     const indicator = document.getElementById('gestureIndicator');
-    const speedIndicator = document.getElementById('speedIndicator');
-    const zones = overlay.querySelectorAll('.gesture-zone');
 
     if (!overlay) return;
+    const zones = overlay.querySelectorAll('.gesture-zone');
 
     const DOUBLE_TAP_DELAY = 320;
     // 길게 누름 인식 시간. 더블탭(320ms)과 충돌하지 않으면서
     // "꾹 누르자마자 2배속" 체감을 빠르게 하기 위해 짧게 잡는다.
     const LONG_PRESS_DELAY = 360;
     const SEEK_SECONDS = 10;
-    const SPEED_MULTIPLIER = 2;
-    const RATE_RESTORE_DELAY = 140;
 
     let lastTapTime = 0;
     let lastTapZone = null;
     let singleTapTimer = null;
     let longPressTimer = null;
     let isLongPressing = false;
-    let originalRate = 1;
-    let wasPausedAtLongPressStart = false;
     let pressStartX = 0;
     let pressStartY = 0;
     let pressMoved = false;
     let indicatorTimer = null;
     const activePointers = new Set();
-    let pendingRateRestoreTimer = null;
-
-    function enablePitchPreservation() {
-        // 브라우저별 음정 보존 플래그를 모두 켠다.
-        // (Safari: webkitPreservesPitch, Firefox: mozPreservesPitch)
-        const pitchProps = ['preservesPitch', 'webkitPreservesPitch', 'mozPreservesPitch'];
-        pitchProps.forEach((prop) => {
-            if (prop in video) {
-                try { video[prop] = true; } catch (_) {}
-            }
-        });
-    }
 
     // 초기/소스 변경 시마다 음정 보존 상태를 강제
-    enablePitchPreservation();
-    video.addEventListener('loadedmetadata', enablePitchPreservation);
-    video.addEventListener('ratechange', enablePitchPreservation);
+    playbackSpeed.enablePitchPreservation();
+    video.addEventListener('loadedmetadata', playbackSpeed.enablePitchPreservation);
+    video.addEventListener('ratechange', playbackSpeed.enablePitchPreservation);
 
     function showIndicator(text, side) {
         if (!indicator) return;
@@ -2467,69 +2797,9 @@ function initGestures() {
         }, 600);
     }
 
-    function showSpeedIndicator() {
-        if (!speedIndicator) return;
-        speedIndicator.classList.add('is-active');
-    }
-
-    function hideSpeedIndicator() {
-        if (!speedIndicator) return;
-        speedIndicator.classList.remove('is-active');
-    }
-
-    function safeSeek(deltaSeconds) {
-        if (!video.src || !Number.isFinite(video.currentTime)) return;
-        const duration = Number.isFinite(video.duration) ? video.duration : totalDuration;
-        let next = video.currentTime + deltaSeconds;
-        if (Number.isFinite(duration) && duration > 0) {
-            // iOS Safari가 정확히 duration으로 시킹되면 끝에서 멈추거나
-            // 처음으로 되감기는 경우가 있어 살짝 안쪽으로 클램프.
-            next = Math.min(Math.max(0, duration - 0.25), next);
-        }
-        next = Math.max(0, next);
-        smoothSeekTo(next);
-    }
-
-    // 누적된 시킹이 서로 간섭하지 않도록 일관된 시킹 헬퍼.
-    // fastSeek가 있으면 keyframe으로 빠르게 점프해 더 매끄럽다 (iOS Safari/Firefox 지원).
-    function smoothSeekTo(target) {
-        if (!Number.isFinite(target)) return;
-        if (Math.abs(target - (video.currentTime || 0)) < 0.05) return;
-        if (typeof video.fastSeek === 'function') {
-            try { video.fastSeek(target); return; } catch (_) {}
-        }
-        video.currentTime = target;
-    }
-
-    function togglePlay() {
-        if (!video.src) return;
-        if (video.paused) {
-            video.play().catch(() => {});
-        } else {
-            video.pause();
-        }
-    }
-
-    function toggleNativeControlsBar() {
-        if (!video.src) return;
-        if (video.hasAttribute('controls')) {
-            video.removeAttribute('controls');
-        } else {
-            video.setAttribute('controls', '');
-        }
-    }
-
-    function hideNativeControlsBar() {
-        if (!video.src) return;
-        if (video.hasAttribute('controls')) {
-            video.removeAttribute('controls');
-        }
-    }
-
     function handleZoneInteraction(zone, clientX, clientY) {
         const now = Date.now();
         const isDoubleTap = (now - lastTapTime < DOUBLE_TAP_DELAY) && lastTapZone === zone;
-        const isExpanded = videoFrame.classList.contains('is-expanded');
 
         if (isDoubleTap) {
             clearTimeout(singleTapTimer);
@@ -2537,18 +2807,14 @@ function initGestures() {
             lastTapTime = 0;
             lastTapZone = null;
 
-            // 더블탭 시 어떤 모드든 컨트롤 바를 즉시 숨김
-            if (isExpanded) {
-                customControls.hide();
-            } else {
-                hideNativeControlsBar();
-            }
+            // 더블탭 시 컨트롤 바를 즉시 숨김
+            customControls.hide();
 
             if (zone === 'left') {
-                safeSeek(-SEEK_SECONDS);
+                seekVideoBy(-SEEK_SECONDS);
                 showIndicator(`-${SEEK_SECONDS}초`, 'left');
             } else {
-                safeSeek(SEEK_SECONDS);
+                seekVideoBy(SEEK_SECONDS);
                 showIndicator(`+${SEEK_SECONDS}초`, 'right');
             }
             return;
@@ -2558,44 +2824,13 @@ function initGestures() {
         lastTapZone = zone;
         clearTimeout(singleTapTimer);
 
-        if (isExpanded) {
-            // 확대 모드: 싱글탭은 커스텀 컨트롤 바 토글.
-            // DOUBLE_TAP_DELAY 후에 발동시켜 더블탭 가능성을 우선 확인.
-            singleTapTimer = setTimeout(() => {
-                customControls.toggle();
-                lastTapTime = 0;
-                lastTapZone = null;
-            }, DOUBLE_TAP_DELAY);
-            return;
-        }
-
-        // 미확대 모드: 싱글탭은 네이티브 컨트롤 바(어두워지며 뜨는 iOS 기본 바)를
-        // 토글. 재생/정지 토글은 하지 않는다 (네이티브 바의 재생 버튼으로 조작).
+        // 싱글탭은 커스텀 컨트롤 바 토글.
+        // DOUBLE_TAP_DELAY 후에 발동시켜 더블탭 가능성을 우선 확인.
         singleTapTimer = setTimeout(() => {
-            toggleNativeControlsBar();
+            customControls.toggle();
             lastTapTime = 0;
             lastTapZone = null;
         }, DOUBLE_TAP_DELAY);
-    }
-
-    // rate 변경 시 브라우저(특히 iOS Safari)는 음 높이 유지(preservesPitch)를
-    // 위해 오디오 리샘플러를 재구성하느라 짧게 멈춘다. 이 멈춤은 디코더 레벨이라
-    // JS에서 직접 제거할 수 없어, 변경량을 최소화하는 것이 우리가 할 수 있는 최선.
-    function setPlaybackRateIfChanged(newRate) {
-        const current = video.playbackRate || 1;
-        if (Math.abs(current - newRate) < 0.001) return true;
-        try {
-            video.playbackRate = newRate;
-            return true;
-        } catch (_) {
-            return false;
-        }
-    }
-
-    function cancelPendingRateRestore() {
-        if (!pendingRateRestoreTimer) return;
-        clearTimeout(pendingRateRestoreTimer);
-        pendingRateRestoreTimer = null;
     }
 
     function startLongPress() {
@@ -2603,18 +2838,8 @@ function initGestures() {
         longPressTimer = setTimeout(() => {
             if (pressMoved) return;
             if (!video.src || !Number.isFinite(video.duration)) return;
-            cancelPendingRateRestore();
-            originalRate = video.playbackRate || 1;
-            wasPausedAtLongPressStart = video.paused;
-            // 가장 비싼 작업(rate 변경)을 가장 먼저, 다른 작업과 분리해 호출 —
-            // 메인 쓰레드 정체로 인한 추가 지연을 줄임. 같은 rate이면 no-op.
-            if (!setPlaybackRateIfChanged(SPEED_MULTIPLIER)) return;
+            if (!playbackSpeed.startTemporaryFastForward('pointer')) return;
             isLongPressing = true;
-            // 사용자가 "활성화됨" 신호를 빠르게 받도록 시각 지시자는 즉시.
-            showSpeedIndicator();
-            if (video.paused) {
-                video.play().catch(() => {});
-            }
             if (navigator.vibrate) {
                 // 진동은 메인 쓰레드 작업과 분리해 rate 적용 후에 호출.
                 setTimeout(() => {
@@ -2627,20 +2852,7 @@ function initGestures() {
     function endLongPress() {
         if (isLongPressing) {
             isLongPressing = false;
-            hideSpeedIndicator();
-            // 배속 시작 전에 일시정지 상태였다면 손을 떼는 순간 원 상태로 복원.
-            if (wasPausedAtLongPressStart && !video.paused) {
-                video.pause();
-            }
-            // 손을 떼자마자 바로 원복하지 않고 약간 지연시켜
-            // 빠른 재-롱프레스 시 1x↔2x 재전환에 따른 끊김을 줄인다.
-            cancelPendingRateRestore();
-            pendingRateRestoreTimer = setTimeout(() => {
-                requestAnimationFrame(() => {
-                    setPlaybackRateIfChanged(originalRate || 1);
-                    pendingRateRestoreTimer = null;
-                });
-            }, RATE_RESTORE_DELAY);
+            playbackSpeed.endTemporaryFastForward('pointer');
         }
         clearTimeout(longPressTimer);
         longPressTimer = null;
@@ -2731,6 +2943,109 @@ function initGestures() {
     });
 }
 
+function initPlaybackKeyboardShortcuts() {
+    const TEMP_FAST_FORWARD_KEY_CODE = 'KeyD';
+    const RATE_DECREASE_KEY_CODE = 'BracketLeft';
+    const RATE_INCREASE_KEY_CODE = 'BracketRight';
+    const RATE_RESET_KEY_CODE = 'KeyP';
+    const SEEK_BACKWARD_SHORT_KEY_CODE = 'KeyA';
+    const SEEK_FORWARD_SHORT_KEY_CODE = 'KeyG';
+    const SEEK_BACKWARD_LONG_KEY_CODE = 'KeyS';
+    const SEEK_FORWARD_LONG_KEY_CODE = 'KeyF';
+    const SEEK_BACKWARD_KEY_CODE = 'KeyJ';
+    const SEEK_FORWARD_KEY_CODE = 'KeyL';
+    const SHORT_SEEK_SECONDS = 5;
+    const LONG_SEEK_SECONDS = 10;
+    let isTemporaryKeyActive = false;
+    let seekIndicatorTimer = null;
+
+    function shouldIgnorePlaybackShortcut(e) {
+        return e.metaKey || e.ctrlKey || e.altKey || isSettingsModalOpen() || isEditableTarget(e.target);
+    }
+
+    function endKeyboardFastForward() {
+        if (!isTemporaryKeyActive) return;
+        isTemporaryKeyActive = false;
+        playbackSpeed.endTemporaryFastForward('keyboard');
+    }
+
+    function showSeekShortcutIndicator(text, side) {
+        const indicator = document.getElementById('gestureIndicator');
+        if (!indicator) return;
+        clearTimeout(seekIndicatorTimer);
+        indicator.textContent = text;
+        indicator.classList.remove('is-left', 'is-right');
+        indicator.classList.add(side === 'left' ? 'is-left' : 'is-right');
+        indicator.classList.add('is-visible');
+        seekIndicatorTimer = setTimeout(() => {
+            indicator.classList.remove('is-visible');
+        }, 600);
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (shouldIgnorePlaybackShortcut(e)) return;
+
+        if (e.code === TEMP_FAST_FORWARD_KEY_CODE) {
+            e.preventDefault();
+            if (e.repeat || isTemporaryKeyActive) return;
+            isTemporaryKeyActive = playbackSpeed.startTemporaryFastForward('keyboard');
+            return;
+        }
+
+        if (e.code === RATE_RESET_KEY_CODE) {
+            e.preventDefault();
+            if (!e.repeat) playbackSpeed.setRate(1);
+            return;
+        }
+
+        if (e.code === RATE_DECREASE_KEY_CODE) {
+            e.preventDefault();
+            playbackSpeed.adjustRate(-PLAYBACK_RATE_STEP);
+            return;
+        }
+
+        if (e.code === RATE_INCREASE_KEY_CODE) {
+            e.preventDefault();
+            playbackSpeed.adjustRate(PLAYBACK_RATE_STEP);
+            return;
+        }
+
+        if (e.code === SEEK_BACKWARD_SHORT_KEY_CODE) {
+            e.preventDefault();
+            if (seekVideoBy(-SHORT_SEEK_SECONDS)) showSeekShortcutIndicator(`-${SHORT_SEEK_SECONDS}초`, 'left');
+            return;
+        }
+
+        if (e.code === SEEK_FORWARD_SHORT_KEY_CODE) {
+            e.preventDefault();
+            if (seekVideoBy(SHORT_SEEK_SECONDS)) showSeekShortcutIndicator(`+${SHORT_SEEK_SECONDS}초`, 'right');
+            return;
+        }
+
+        if (e.code === SEEK_BACKWARD_LONG_KEY_CODE || e.code === SEEK_BACKWARD_KEY_CODE) {
+            e.preventDefault();
+            if (seekVideoBy(-LONG_SEEK_SECONDS)) showSeekShortcutIndicator(`-${LONG_SEEK_SECONDS}초`, 'left');
+            return;
+        }
+
+        if (e.code === SEEK_FORWARD_LONG_KEY_CODE || e.code === SEEK_FORWARD_KEY_CODE) {
+            e.preventDefault();
+            if (seekVideoBy(LONG_SEEK_SECONDS)) showSeekShortcutIndicator(`+${LONG_SEEK_SECONDS}초`, 'right');
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== TEMP_FAST_FORWARD_KEY_CODE) return;
+        e.preventDefault();
+        endKeyboardFastForward();
+    });
+
+    window.addEventListener('blur', endKeyboardFastForward);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) endKeyboardFastForward();
+    });
+}
+
 function initControls() {
     document.querySelectorAll('[data-set-from-video]').forEach(button => {
         button.addEventListener('click', () => {
@@ -2778,6 +3093,7 @@ function initControls() {
             note: '',
         };
 
+        recordTimelineHistory();
         segments.push(normalizeSegment(data));
         showFormStatus('현재 장면 메모 추가 완료');
         resetForm();
@@ -2827,6 +3143,7 @@ function initControls() {
             segments = [];
             totalDuration = 0;
             renderAll();
+            resetTimelineHistory();
         }
 
         // iOS에서 큰 파일이거나 MP4의 moov atom이 끝에 있을 가능성이 있다면 미리 경고
@@ -2896,6 +3213,24 @@ function initSettings() {
     const clearTitleToggle = document.getElementById('clearTitleToggle');
     const clearTagToggle = document.getElementById('clearTagToggle');
     const fullscreenModeSelect = document.getElementById('fullscreenModeSetting');
+    const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
+    const generalSections = document.querySelectorAll('.settings-general-section');
+    const shortcutSections = document.querySelectorAll('.settings-shortcuts-section');
+
+    function setSettingsTab(tabName) {
+        const showShortcuts = tabName === 'shortcuts';
+        settingsTabButtons.forEach(button => {
+            const active = button.dataset.settingsTab === tabName;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', String(active));
+        });
+        generalSections.forEach(section => {
+            section.hidden = showShortcuts;
+        });
+        shortcutSections.forEach(section => {
+            section.hidden = !showShortcuts;
+        });
+    }
 
     settingsButton.addEventListener('click', openSettings);
     closeSettingsButton.addEventListener('click', closeSettings);
@@ -2927,6 +3262,9 @@ function initSettings() {
             showFormStatus('전체화면 방식 저장됨');
         });
     }
+    settingsTabButtons.forEach(button => {
+        button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab));
+    });
 
     const designSelect = document.getElementById('designSelect');
     if (designSelect) {
@@ -2996,6 +3334,7 @@ initSettings();
 initGestures();
 initCustomControls();
 initFullscreen();
+initPlaybackKeyboardShortcuts();
 initResizers();
 initPremiereTimelineKeyboard();
 loadRecentFileInfo();
@@ -3003,12 +3342,23 @@ loadRecentFileInfo();
 function initPremiereTimelineKeyboard() {
     document.addEventListener('keydown', (e) => {
         if (!isPremiereDesign()) return;
-        // 텍스트 입력 중에는 단축키 무시
-        const tag = (e.target?.tagName || '').toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
         // 모달 열려있으면 무시
-        const modal = document.getElementById('settingsModal');
-        if (modal && modal.classList.contains('is-open')) return;
+        if (isSettingsModalOpen()) return;
+
+        const shortcutKey = (e.key || '').toLowerCase();
+        if (e.ctrlKey && !e.metaKey && !e.altKey && shortcutKey === 'z') {
+            const isUndo = !e.shiftKey;
+            const isRedo = e.shiftKey;
+            if (isUndo || isRedo) {
+                e.preventDefault();
+                if (isRedo) redoTimelineAction();
+                else undoTimelineAction();
+                return;
+            }
+        }
+
+        // 텍스트 입력 중에는 재생/줌/이동 단축키만 무시한다.
+        if (isEditableTarget(e.target)) return;
 
         const view = document.getElementById('premiereTimelineView');
         if (!view) return;

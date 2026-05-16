@@ -6,13 +6,13 @@
     <title>영상 타임라인 메모 도구</title>
     <meta name="theme-color" content="#2563eb">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="타임라인 메모">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260515-6">
-    <script defer src="app.js?v=20260515-6"></script>
+    <link rel="stylesheet" href="styles.css?v=20260516-1">
+    <script defer src="app.js?v=20260516-3"></script>
 </head>
 <body>
     <button class="settings-button" id="settingsButton" aria-label="설정">
@@ -32,7 +32,12 @@
                 </button>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-tabs" role="tablist" aria-label="설정 탭">
+                <button class="settings-tab-button is-active" type="button" role="tab" aria-selected="true" data-settings-tab="general">일반</button>
+                <button class="settings-tab-button" type="button" role="tab" aria-selected="false" data-settings-tab="shortcuts">단축키</button>
+            </div>
+
+            <div class="settings-section settings-general-section">
                 <h3>캐시 관리</h3>
                 <p>브라우저에 저장된 타임라인 데이터를 관리합니다.</p>
                 <div class="cache-info" id="cacheInfo">
@@ -52,7 +57,7 @@
                 </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section settings-general-section">
                 <h3>기본 설정</h3>
                 <p>새 타임라인 메모를 추가할 때 적용되는 기본값을 설정합니다.</p>
                 <div class="setting-row">
@@ -93,7 +98,7 @@
                 </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section settings-general-section">
                 <h3>플레이어 설정</h3>
                 <p>전체화면 버튼 동작 방식을 선택합니다. 시스템 전체화면은 OS의 풀스크린을 사용하지만, iPad/iPhone에서는 더블탭·길게 누르기 등 커스텀 제스처가 비활성화됩니다.</p>
                 <div class="setting-row">
@@ -105,7 +110,46 @@
                 </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section settings-shortcuts-section" hidden>
+                <h3>단축키</h3>
+                <p>입력칸이나 설정창 안에서는 플레이어 단축키가 동작하지 않습니다.</p>
+                <div class="shortcut-list" aria-label="플레이어 단축키 목록">
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>A</kbd></div>
+                        <span>-5초 이동</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>G</kbd></div>
+                        <span>+5초 이동</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>S</kbd><kbd>J</kbd></div>
+                        <span>-10초 이동</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>F</kbd><kbd>L</kbd></div>
+                        <span>+10초 이동</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>D</kbd></div>
+                        <span>누르고 있는 동안 2배속</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>P</kbd></div>
+                        <span>1배속으로 복귀</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>[</kbd><kbd>]</kbd></div>
+                        <span>배속 내리기 / 올리기</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>Esc</kbd></div>
+                        <span>확대 모드 또는 설정창 닫기</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-section settings-general-section">
                 <h3>영상 호환성 (faststart)</h3>
                 <p>영상 파일의 메타데이터(moov atom) 위치를 메모리 안에서만 앞쪽으로 옮겨, 큰 영상이나 호환성이 떨어지는 MP4를 빠르게 열 수 있게 해줍니다. <strong>원본 파일은 절대 수정되지 않습니다.</strong></p>
                 <div class="setting-row">
@@ -135,7 +179,7 @@
                 </div>
             </div>
 
-            <div class="settings-section" id="pwaSection">
+            <div class="settings-section settings-general-section" id="pwaSection">
                 <h3>홈 화면 앱 (PWA)</h3>
                 <p>홈 화면에 추가하면 주소창과 탭바 없이 진짜 전체화면으로 사용할 수 있어요. CSS 확대 모드와 함께 쓰면 iPad에서 더블탭/2배속 제스처 + 풀스크린이 모두 가능해집니다.</p>
                 <div class="cache-info">
@@ -167,7 +211,7 @@
                 </div>
             </div>
 
-            <div class="settings-section">
+            <div class="settings-section settings-general-section">
                 <h3>정보</h3>
                 <p>영상 타임라인 메모 도구 v1.0<br>브라우저의 localStorage를 사용하여 데이터를 저장합니다.</p>
             </div>
@@ -212,7 +256,7 @@
                 </div>
 
                 <div id="videoFrame" class="video-frame">
-                    <video id="videoPlayer" controls preload="metadata" playsinline webkit-playsinline x-webkit-airplay="allow"></video>
+                    <video id="videoPlayer" preload="metadata" playsinline webkit-playsinline x-webkit-airplay="allow"></video>
                     <div id="gestureOverlay" class="gesture-overlay" aria-hidden="true">
                         <div class="gesture-zone gesture-zone-left" data-zone="left"></div>
                         <div class="gesture-zone gesture-zone-right" data-zone="right"></div>
