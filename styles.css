@@ -2985,6 +2985,164 @@ body.is-resizing .panel-resizer {
     margin: 0 auto;
 }
 
+/* ============================================================
+ * 프리미어 프로 테마 — 아이패드 터치·애플펜슬 작업 최적화
+ *  - 데스크톱(마우스) 환경의 컴팩트한 프로 룩은 그대로 두고,
+ *    터치 기기(pointer: coarse)에서만 큰 터치 타깃을 적용
+ *  - 두 손가락 핀치로 타임라인 확대·이동(app.js), 휠 줌은 데스크톱 전용
+ *  - 큰 버튼/핸들/플레이헤드로 펜슬·손가락 편집 효율 향상
+ * ============================================================ */
+
+/* 두 손가락 안내 칩 — 터치 기기에서만 표시 */
+[data-design="premiere"] .premiere-tl-touch-hint {
+    display: none;
+}
+
+@media (pointer: coarse) {
+    /* 두 손가락 핀치 제스처가 JS로 전달되도록(세로 스크롤은 네이티브 유지) */
+    [data-design="premiere"] .premiere-tl-tracks-area,
+    [data-design="premiere"] .premiere-tl-canvas,
+    [data-design="premiere"] .premiere-tl-ruler {
+        touch-action: pan-y;
+    }
+
+    /* 툴바 & 버튼 확대 */
+    [data-design="premiere"] .premiere-tl-toolbar {
+        height: 50px;
+        gap: 10px;
+        padding: 0 10px;
+    }
+    [data-design="premiere"] .premiere-tl-import,
+    [data-design="premiere"] .premiere-tl-export {
+        height: 40px !important;
+        padding: 0 14px !important;
+        font-size: 13px !important;
+    }
+    [data-design="premiere"] .premiere-tl-file {
+        font-size: 13px;
+        min-width: 0;
+    }
+    [data-design="premiere"] .premiere-tl-zoom {
+        gap: 6px;
+        padding: 0 6px;
+    }
+    [data-design="premiere"] .premiere-tl-zoom-btn {
+        height: 40px !important;
+        min-width: 44px;
+        padding: 0 10px !important;
+        font-size: 18px !important;
+    }
+    /* 터치에선 핀치/버튼으로 충분 — 작은 슬라이더는 숨겨 툴바 공간 확보 */
+    [data-design="premiere"] .premiere-tl-zoom-slider {
+        display: none;
+    }
+    [data-design="premiere"] .premiere-tl-zoom-level {
+        font-size: 13px;
+        min-width: 66px;
+    }
+
+    /* 핀치 안내 칩 */
+    [data-design="premiere"] .premiere-tl-touch-hint {
+        display: inline-flex;
+        align-items: center;
+        flex-shrink: 0;
+        margin-left: 8px;
+        padding: 0 10px;
+        height: 30px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        border: 1px solid var(--accent);
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    /* 트랙/룰러/헤더 키우기 (행 높이 짝 유지: 룰러=스페이서, 트랙=헤더) */
+    [data-design="premiere"] .premiere-tl-headers {
+        width: 60px;
+    }
+    [data-design="premiere"] .premiere-tl-ruler,
+    [data-design="premiere"] .premiere-tl-header-spacer {
+        height: 30px;
+    }
+    [data-design="premiere"] .premiere-tl-track,
+    [data-design="premiere"] .premiere-tl-track-header {
+        height: 60px;
+    }
+
+    /* 클립 리사이즈 핸들 — 손가락/펜슬로 잡기 쉽게 넓히고 그립 표시 */
+    [data-design="premiere"] .premiere-tl-clip-handle {
+        width: 18px;
+    }
+    [data-design="premiere"] .premiere-tl-clip-handle::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 3px;
+        height: 42%;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.7);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+    }
+
+    /* 플레이헤드 — 선 굵게 + 큰 손잡이 */
+    [data-design="premiere"] .premiere-tl-playhead {
+        width: 2px;
+    }
+    [data-design="premiere"] .premiere-tl-playhead-head {
+        left: -13px;
+        width: 26px;
+        height: 24px;
+    }
+
+    /* 클립 라벨 약간 키우기 */
+    [data-design="premiere"] .premiere-tl-clip span {
+        font-size: 12px;
+    }
+
+    /* 디테일 사이드 패널 — 더 넓게 + 큰 버튼 */
+    [data-design="premiere"] .premiere-tl-detail {
+        width: clamp(240px, 38vw, 340px);
+    }
+    [data-design="premiere"] .premiere-tl-detail-header {
+        height: 44px;
+    }
+    [data-design="premiere"] .premiere-tl-detail-title {
+        font-size: 13px;
+    }
+    [data-design="premiere"] .premiere-tl-detail-close {
+        height: 40px !important;
+        min-width: 40px;
+        font-size: 20px !important;
+    }
+    [data-design="premiere"] .premiere-tl-detail-time,
+    [data-design="premiere"] .premiere-tl-detail-note {
+        font-size: 13px;
+    }
+    [data-design="premiere"] .premiere-tl-detail-actions {
+        gap: 8px;
+        padding: 10px 12px;
+    }
+    [data-design="premiere"] .premiere-tl-detail-actions button {
+        height: 48px;
+        font-size: 13px;
+    }
+
+    /* 좁은 뷰포트에서 디테일 패널 폭 조정 */
+    [data-design="premiere"] #timelinePanel .search-row input[type="text"] {
+        font-size: 16px;
+    }
+}
+
+/* 좁은 터치 화면(아이패드 세로 등)에서 디테일 패널이 트랙을 너무 가리지 않도록 */
+@media (pointer: coarse) and (max-width: 900px) {
+    [data-design="premiere"] .premiere-tl-detail {
+        width: clamp(200px, 44vw, 260px);
+    }
+}
 
 @media (max-height: 900px) {
     .app-shell {
