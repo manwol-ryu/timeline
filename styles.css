@@ -3004,3 +3004,385 @@ body.is-resizing .panel-resizer {
         gap: 10px;
     }
 }
+
+/* ============================================================
+ * iPad 터치·애플펜슬 작업 최적화 디자인 (data-design="pencil")
+ * 목표: 아이패드에서 손가락/애플펜슬로 작업할 때의 작업 효율 극대화
+ *  - 큰 터치 타깃(>=56px, 주요 동작 64px)으로 오터치 감소
+ *  - 굵고 잡기 쉬운 스크러버 + 큰 재생 컨트롤
+ *  - 자주 쓰는 동작(시작/종료 지정, 메모 추가)을 크고 잘 보이게 배치
+ *  - 누름 즉시 반응하는 촉각 피드백, 펜슬 호버 대응
+ *  - 입력 폰트 17px로 iOS 자동 줌 방지, 넉넉한 간격
+ * ============================================================ */
+
+[data-design="pencil"] {
+    --pencil-touch-min: 56px;
+    --pencil-touch-lg: 64px;
+    --pencil-radius: 18px;
+    --pencil-radius-sm: 14px;
+    --pencil-accent-grad: linear-gradient(135deg, var(--accent), var(--accent-strong));
+}
+
+[data-design="pencil"] body {
+    padding: 10px clamp(10px, 1.6vw, 22px);
+    height: 100vh;
+    overflow: hidden;
+    font-size: 16px;
+    line-height: 1.55;
+}
+
+[data-design="pencil"] .app-shell {
+    margin: 0 auto;
+    max-width: 100%;
+    width: 100%;
+    height: calc(100vh - 20px);
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    align-items: stretch;
+    gap: clamp(14px, 1.6vw, 26px);
+}
+
+[data-design="pencil"] .video-stage,
+[data-design="pencil"] .workspace {
+    height: 100%;
+    min-height: 0;
+}
+
+[data-design="pencil"] .video-panel {
+    padding: clamp(16px, 1.4vw, 24px);
+    gap: 14px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+[data-design="pencil"] .panel {
+    border-radius: 22px;
+    padding: clamp(16px, 1.4vw, 26px);
+    gap: 16px;
+}
+
+[data-design="pencil"] .workspace {
+    overflow: hidden;
+    border-left: none;
+    padding-left: 0;
+    gap: 14px;
+}
+
+/* --- 버튼: 큰 터치 타깃 + 촉각 피드백 --- */
+[data-design="pencil"] button {
+    min-height: var(--pencil-touch-min);
+    border-radius: var(--pencil-radius-sm);
+    font-size: 1rem;
+    font-weight: 700;
+    padding: 12px 22px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.08s ease, filter 0.18s ease;
+}
+
+[data-design="pencil"] button.primary {
+    background: var(--pencil-accent-grad);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.22);
+    letter-spacing: 0.01em;
+}
+
+[data-design="pencil"] button:active {
+    transform: scale(0.97);
+}
+
+/* 가장 자주 쓰는 핵심 동작은 크고 꽉 차게 */
+[data-design="pencil"] #quickAddMemo {
+    width: 100%;
+    min-height: var(--pencil-touch-lg);
+    font-size: 1.1rem;
+    border-radius: var(--pencil-radius);
+}
+
+[data-design="pencil"] #editorPanel > .quick-buttons {
+    gap: 12px;
+    align-items: center;
+}
+
+[data-design="pencil"] #saveSegment {
+    flex: 1 1 auto;
+    min-height: var(--pencil-touch-lg);
+    font-size: 1.06rem;
+    border-radius: var(--pencil-radius);
+}
+
+/* 위치 지정 버튼(시작/종료/±5초)을 2열 그리드의 큰 버튼으로 */
+[data-design="pencil"] .video-info .quick-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+[data-design="pencil"] .video-info .quick-buttons button {
+    width: 100%;
+    margin: 0;
+}
+
+/* --- 탭: 꽉 찬 큰 탭 --- */
+[data-design="pencil"] .tab-controls {
+    width: 100%;
+}
+
+[data-design="pencil"] .tab-button {
+    flex: 1;
+    text-align: center;
+    min-height: var(--pencil-touch-min);
+    font-size: 1.02rem;
+    padding: 12px 20px;
+    border-radius: 999px;
+}
+
+/* --- 입력: 17px(자동 줌 방지) + 큰 히트 영역 --- */
+[data-design="pencil"] input[type="text"],
+[data-design="pencil"] textarea {
+    font-size: 17px;
+    border-radius: var(--pencil-radius-sm);
+    padding: 14px 16px;
+    border-width: 2px;
+}
+
+[data-design="pencil"] textarea {
+    min-height: 110px;
+}
+
+[data-design="pencil"] label {
+    font-size: 1rem;
+}
+
+[data-design="pencil"] .form-grid {
+    grid-template-columns: 1fr 1fr 120px;
+    gap: 14px;
+}
+
+[data-design="pencil"] input[type="color"] {
+    height: 54px;
+    border-radius: var(--pencil-radius-sm);
+}
+
+[data-design="pencil"] .form-grid input[type="color"] {
+    width: 120px;
+    height: 54px;
+}
+
+/* --- 재생 컨트롤: 크고 잡기 쉬운 스크러버 --- */
+[data-design="pencil"] .custom-controls-bar {
+    height: 68px;
+    padding: 0 18px;
+    gap: 14px;
+}
+
+[data-design="pencil"] .custom-controls-btn {
+    width: 52px;
+    height: 52px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 999px;
+}
+
+[data-design="pencil"] .custom-controls-btn svg {
+    width: 28px;
+    height: 28px;
+}
+
+[data-design="pencil"] .custom-controls-time {
+    font-size: 0.95rem;
+}
+
+[data-design="pencil"] .custom-controls-scrubber {
+    height: 44px;
+}
+
+[data-design="pencil"] .custom-controls-scrubber::-webkit-slider-runnable-track {
+    height: 8px;
+    border-radius: 4px;
+}
+
+[data-design="pencil"] .custom-controls-scrubber::-moz-range-track {
+    height: 8px;
+    border-radius: 4px;
+}
+
+[data-design="pencil"] .custom-controls-scrubber::-webkit-slider-thumb {
+    width: 30px;
+    height: 30px;
+    margin-top: -11px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 6px rgba(255, 255, 255, 0.2);
+}
+
+[data-design="pencil"] .custom-controls-scrubber::-moz-range-thumb {
+    width: 30px;
+    height: 30px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 6px rgba(255, 255, 255, 0.2);
+}
+
+/* --- 화면 위 떠 있는 버튼들 크게 --- */
+[data-design="pencil"] .player-fab {
+    width: 52px;
+    height: 52px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 14px;
+    top: 12px;
+    right: 12px;
+}
+
+[data-design="pencil"] .player-fab svg {
+    width: 28px;
+    height: 28px;
+}
+
+[data-design="pencil"] .settings-button {
+    width: 56px;
+    height: 56px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+    top: 12px;
+    right: 12px;
+}
+
+/* 설정 닫기(✕) 버튼 — 손가락/펜슬로 누르기 쉬운 큰 타깃 + 아이콘 항상 표시 */
+[data-design="pencil"] .close-button {
+    width: 40px;
+    height: 40px;
+    min-height: 0;
+    padding: 0;
+    border-radius: 50%;
+}
+
+[data-design="pencil"] .close-button svg {
+    opacity: 1;
+}
+
+/* --- 타임라인/메모 카드 --- */
+[data-design="pencil"] .timeline-bar {
+    height: 22px;
+}
+
+[data-design="pencil"] .segment-card {
+    padding: 18px;
+    border-radius: var(--pencil-radius);
+    gap: 14px;
+}
+
+[data-design="pencil"] .segment-actions {
+    gap: 10px;
+}
+
+[data-design="pencil"] .segment-actions button {
+    min-height: 48px;
+    min-width: 84px;
+}
+
+[data-design="pencil"] .search-row {
+    gap: 10px;
+    padding: 12px;
+}
+
+[data-design="pencil"] .search-row input {
+    min-height: 48px;
+    font-size: 17px;
+}
+
+[data-design="pencil"] .search-row button {
+    min-height: 48px;
+}
+
+/* 패널 사이 리사이저: 펜슬/손가락으로 잡기 쉽게 히트 영역 확대 */
+[data-design="pencil"] .panel-resizer-horizontal {
+    width: 18px;
+    transform: translateX(-6px);
+}
+
+/* 펜슬 호버(또는 트랙패드/마우스) 사용 시 부드러운 강조 — 순수 터치에선 미적용되어 hover 잔상 없음 */
+@media (hover: hover) {
+    [data-design="pencil"] button.primary:hover {
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.3);
+        filter: brightness(1.04);
+    }
+
+    [data-design="pencil"] button.ghost:hover {
+        border-color: var(--accent);
+        background: var(--accent-soft);
+    }
+
+    [data-design="pencil"] .segment-card:hover {
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
+    }
+}
+
+/* iPad 가로 모드(1024~1366) — 일반 max-width:1180px의 단일 칼럼 강제를 무력화하고 2칼럼 유지 */
+@media (max-width: 1180px) {
+    [data-design="pencil"] body {
+        height: 100vh;
+        min-height: 100vh;
+        overflow: hidden;
+        padding: 10px clamp(10px, 1.6vw, 22px);
+    }
+
+    [data-design="pencil"] .app-shell {
+        margin: 0 auto;
+        height: calc(100vh - 20px);
+        grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+        grid-auto-rows: auto;
+        max-width: 100%;
+    }
+
+    [data-design="pencil"] .video-stage,
+    [data-design="pencil"] .workspace {
+        height: 100%;
+    }
+
+    [data-design="pencil"] .video-panel {
+        height: 100%;
+    }
+
+    [data-design="pencil"] video {
+        min-height: 0;
+    }
+
+    [data-design="pencil"] .workspace {
+        overflow: hidden;
+        border-left: none;
+    }
+
+    [data-design="pencil"] .workspace-panels {
+        justify-content: flex-start;
+    }
+}
+
+/* iPad 세로 모드 — 상하 분할(영상 위 / 메모 아래) + 페이지 스크롤 허용 */
+@media (orientation: portrait) and (max-width: 1180px) {
+    [data-design="pencil"] body {
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+    }
+
+    [data-design="pencil"] .app-shell {
+        height: auto;
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto;
+    }
+
+    [data-design="pencil"] .video-stage,
+    [data-design="pencil"] .workspace {
+        height: auto;
+    }
+
+    [data-design="pencil"] .video-panel {
+        height: auto;
+    }
+
+    [data-design="pencil"] .tab-controls {
+        width: 100%;
+    }
+
+    [data-design="pencil"] .tab-button {
+        flex: 1;
+        text-align: center;
+    }
+}
