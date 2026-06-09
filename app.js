@@ -75,6 +75,7 @@ const MAX_RULER_TICKS = 600;
 const MAX_FRAME_RATE_MOOV_BYTES = 96 * 1024 * 1024;
 
 let _premiereOriginalParents = null;
+let premierePinchActive = false; // 타임라인에서 두 손가락 핀치/팬 제스처 진행 중 여부
 let premiereTimelineZoom = 8; // px per second (default)
 const PREMIERE_TIMELINE_ZOOM_MIN = 0.5;
 const PREMIERE_TIMELINE_ZOOM_MAX = 600;
@@ -301,6 +302,7 @@ function buildPremiereTimelineDom() {
                 <button type="button" class="premiere-tl-zoom-btn" data-zoom="fit" title="전체보기">⤢</button>
                 <span class="premiere-tl-zoom-level">8 px/s</span>
             </div>
+            <span class="premiere-tl-touch-hint" aria-hidden="true">✌︎ 두 손가락 확대·이동</span>
         </div>
         <div class="premiere-tl-main">
             <div class="premiere-tl-tracks-area">
@@ -389,6 +391,7 @@ function buildPremiereTimelineDom() {
 
     attachTimelineScrubHandlers(view);
     attachTimelineWheelZoom(view);
+    attachTimelinePinchZoom(view);
 
     const detail = view.querySelector('.premiere-tl-detail');
     view.querySelector('.premiere-tl-detail-close').addEventListener('click', () => {
@@ -826,6 +829,8 @@ function attachTimelineScrubHandlers(view) {
 
         target.addEventListener('pointerdown', (e) => {
             if (e.button !== undefined && e.button !== 0) return;
+            // 두 손가락 핀치/팬 제스처 중에는 시킹 비활성화
+            if (premierePinchActive) return;
             // 클립 위에서는 시킹 비활성화 (클립 드래그가 우선)
             if (e.target.closest('.premiere-tl-clip')) return;
             scrubbing = true;
@@ -839,7 +844,7 @@ function attachTimelineScrubHandlers(view) {
         });
 
         target.addEventListener('pointermove', (e) => {
-            if (!scrubbing) return;
+            if (!scrubbing || premierePinchActive) return;
             seekFromClientX(e.clientX);
         });
 
@@ -853,6 +858,20 @@ function attachTimelineScrubHandlers(view) {
         }
         target.addEventListener('pointerup', endScrub);
         target.addEventListener('pointercancel', endScrub);
+
+        // 핀치 제스처가 시작되면 진행 중이던 시킹을 깔끔히 취소해
+        // (보류된 rAF 시킹/플레이헤드 잔상이 핀치 중에 튀지 않게 한다)
+        target._cancelScrub = () => {
+            if (!scrubbing) return;
+            scrubbing = false;
+            pendingSeekTime = null;
+            if (seekRafId) {
+                cancelAnimationFrame(seekRafId);
+                seekRafId = 0;
+            }
+            ruler?.classList.remove('is-scrubbing');
+            playhead?.classList.remove('is-scrubbing');
+        };
     }
 
     // 룰러는 canvas의 자식이므로 canvas에만 핸들러를 달면 충분 (이벤트 버블링)
@@ -916,6 +935,93 @@ function attachTimelineWheelZoom(view) {
     }, { passive: false });
 }
 
+// 아이패드 터치/애플펜슬용: 두 손가락 핀치로 타임라인 확대/축소 + 좌우 이동(팬).
+// 마우스(pointerType === 'mouse')는 휠 줌을 쓰므로 제외한다.
+// 한 손가락 시킹과 충돌하지 않도록 캡처 단계에서 포인터를 추적하고,
+// 두 번째 손가락이 닿는 순간 진행 중이던 시킹을 취소한 뒤 핀치 모드로 전환한다.
+function attachTimelinePinchZoom(view) {
+    const tracksArea = view.querySelector('.premiere-tl-tracks-area');
+    if (!tracksArea) return;
+    const headersEl = view.querySelector('.premiere-tl-headers');
+    const canvas = view.querySelector('.premiere-tl-canvas');
+
+    const pointers = new Map(); // pointerId -> clientX
+    let startDist = 0;
+    let startZoom = 0;
+    let focusTime = 0;     // 핀치 시작 시 중점 아래에 있던 시간(초) — 고정
+    let pendingMidX = 0;   // 최신 두 손가락 중점의 clientX
+    let rafId = 0;
+
+    function headerWidth() {
+        return headersEl ? headersEl.offsetWidth : 0;
+    }
+
+    function applyPinch() {
+        rafId = 0;
+        renderPremiereTimeline();
+        const rect = tracksArea.getBoundingClientRect();
+        const newPx = getTimelinePixelsPerSecond();
+        if (newPx > 0) {
+            tracksArea.scrollLeft = focusTime * newPx - (pendingMidX - rect.left - headerWidth());
+        }
+    }
+
+    tracksArea.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse') return;
+        pointers.set(e.pointerId, e.clientX);
+        if (pointers.size === 2) {
+            const xs = [...pointers.values()];
+            startDist = Math.abs(xs[0] - xs[1]) || 1;
+            startZoom = premiereTimelineZoom;
+            const midX = (xs[0] + xs[1]) / 2;
+            const rect = tracksArea.getBoundingClientRect();
+            const oldPx = getTimelinePixelsPerSecond() || premiereTimelineZoom;
+            focusTime = oldPx > 0
+                ? (midX - rect.left - headerWidth() + tracksArea.scrollLeft) / oldPx
+                : 0;
+            pendingMidX = midX;
+            premierePinchActive = true;
+            // 진행 중이던 한 손가락 시킹을 취소(잔상/튐 방지)
+            canvas?._cancelScrub?.();
+        }
+    }, true);
+
+    tracksArea.addEventListener('pointermove', (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.set(e.pointerId, e.clientX);
+        if (pointers.size !== 2 || !premierePinchActive) return;
+        if (!Number.isFinite(totalDuration) || totalDuration <= 0) return;
+        const xs = [...pointers.values()];
+        const dist = Math.abs(xs[0] - xs[1]) || 1;
+        const scale = dist / startDist;
+        const minZoom = getEffectiveMinZoom();
+        premiereTimelineZoom = Math.max(minZoom, Math.min(PREMIERE_TIMELINE_ZOOM_MAX, startZoom * scale));
+        pendingMidX = (xs[0] + xs[1]) / 2;
+        if (!rafId) rafId = requestAnimationFrame(applyPinch);
+        e.preventDefault();
+    }, true);
+
+    function releasePointer(e) {
+        if (!pointers.has(e.pointerId)) return;
+        pointers.delete(e.pointerId);
+        if (pointers.size < 2) {
+            // 핀치 종료(확대/이동 중단). 남은 손가락이 곧장 시킹으로 튀지 않도록
+            // 모든 손가락이 떨어질 때까지 premierePinchActive 를 유지한다.
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = 0;
+            }
+            startDist = 0;
+            syncPremiereZoomControls();
+        }
+        if (pointers.size === 0) {
+            premierePinchActive = false;
+        }
+    }
+    tracksArea.addEventListener('pointerup', releasePointer, true);
+    tracksArea.addEventListener('pointercancel', releasePointer, true);
+}
+
 function autoFitPremiereTimeline(force = false) {
     const view = isPremiereDesign() ? ensurePremiereTimelineView() : document.getElementById('premiereTimelineView');
     if (!view || !isPremiereDesign() || totalDuration <= 0) return;
@@ -951,6 +1057,7 @@ function attachClipDragHandlers(clip, seg) {
 
     function onPointerDown(e) {
         if (e.button !== undefined && e.button !== 0) return;
+        if (premierePinchActive) return; // 핀치 중에는 클립 드래그 시작 안 함
         const handleType = e.target?.dataset?.handle;
         dragMode = handleType === 'left' ? 'left'
             : handleType === 'right' ? 'right'
@@ -967,7 +1074,7 @@ function attachClipDragHandlers(clip, seg) {
     }
 
     function onPointerMove(e) {
-        if (!dragMode) return;
+        if (!dragMode || premierePinchActive) return;
         const deltaSec = (e.clientX - dragStartX) / pxPerSec;
         if (Math.abs(e.clientX - dragStartX) > 3) {
             clip.dataset.dragHappened = '1';
