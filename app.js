@@ -54,6 +54,9 @@ let selectedFileName = '';
 let currentVideoUrl = '';
 let currentLoadedFile = null;
 let currentLoadedFaststartActive = false;
+// IN/OUT 마킹: I로 IN 점을 잡아두고 O로 OUT 점을 잡는 순간 메모로 저장된다.
+let pendingInTime = null;
+let markToastTimer = null;
 const DEFAULT_VIDEO_ASPECT = '16 / 9';
 const DEFAULT_SEGMENT_COLOR = '#3b82f6';
 const STORAGE_KEY_PREFIX = 'timeline_data_';
@@ -1255,7 +1258,11 @@ function setTimeBadge() {
 function renderTimelineBar(targetBar, emptyState) {
     if (!targetBar || !emptyState) return;
     targetBar.innerHTML = '';
-    if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+    targetBar._playheadEl = null;
+    targetBar._pendingInEl = null;
+    const hasDuration = Number.isFinite(totalDuration) && totalDuration > 0;
+    targetBar.classList.toggle('is-scrubbable', hasDuration);
+    if (!hasDuration) {
         emptyState.style.display = 'block';
         return;
     }
@@ -1278,7 +1285,49 @@ function renderTimelineBar(targetBar, emptyState) {
         });
         fragment.appendChild(marker);
     });
+    // 재생 위치 플레이헤드 — 인라인 타임라인에서도 현재 위치가 바로 보이게.
+    const playhead = document.createElement('div');
+    playhead.className = 'timeline-playhead';
+    fragment.appendChild(playhead);
     targetBar.appendChild(fragment);
+    targetBar._playheadEl = playhead;
+    positionInlinePlayhead(targetBar);
+    renderInlinePendingIn(targetBar);
+}
+
+function positionInlinePlayhead(bar) {
+    const playhead = bar?._playheadEl;
+    if (!playhead) return;
+    // 스크럽 중에는 드래그 핸들러가 직접 위치를 갱신하므로 덮어쓰지 않는다.
+    if (bar.classList.contains('is-scrubbing')) return;
+    if (!Number.isFinite(totalDuration) || totalDuration <= 0) return;
+    const percent = Math.max(0, Math.min(100, ((video.currentTime || 0) / totalDuration) * 100));
+    playhead.style.left = `${percent}%`;
+}
+
+function updateInlinePlayheads() {
+    positionInlinePlayhead(timelineBar);
+    positionInlinePlayhead(timelineBarCompact);
+}
+
+function renderInlinePendingIn(bar) {
+    if (!bar) return;
+    if (bar._pendingInEl) {
+        bar._pendingInEl.remove();
+        bar._pendingInEl = null;
+    }
+    if (pendingInTime === null || !Number.isFinite(totalDuration) || totalDuration <= 0) return;
+    const flag = document.createElement('div');
+    flag.className = 'timeline-in-flag';
+    flag.style.left = `${Math.max(0, Math.min(100, (pendingInTime / totalDuration) * 100))}%`;
+    flag.title = `IN ${formatTime(pendingInTime)}`;
+    bar.appendChild(flag);
+    bar._pendingInEl = flag;
+}
+
+function renderInlinePendingIns() {
+    renderInlinePendingIn(timelineBar);
+    renderInlinePendingIn(timelineBarCompact);
 }
 
 function renderTimeline() {
@@ -1607,17 +1656,30 @@ function copyNotes() {
         return parts.join('\n');
     }).join('\n\n');
 
-    const temp = document.createElement('textarea');
-    temp.value = text;
-    document.body.appendChild(temp);
-    temp.select();
-    try {
-        document.execCommand('copy');
-        showFormStatus('메모 복사 완료');
-    } catch (err) {
-        alert('클립보드 복사에 실패했습니다. 수동으로 선택 후 복사해주세요.');
+    function fallbackCopy() {
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        temp.setAttribute('readonly', '');
+        temp.style.position = 'fixed';
+        temp.style.opacity = '0';
+        document.body.appendChild(temp);
+        temp.select();
+        try {
+            document.execCommand('copy');
+            showFormStatus('메모 복사 완료');
+        } catch (err) {
+            alert('클립보드 복사에 실패했습니다. 수동으로 선택 후 복사해주세요.');
+        }
+        document.body.removeChild(temp);
     }
-    document.body.removeChild(temp);
+
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text)
+            .then(() => showFormStatus('메모 복사 완료'))
+            .catch(fallbackCopy);
+    } else {
+        fallbackCopy();
+    }
 }
 
 function exportTxt() {
@@ -2652,6 +2714,7 @@ function initVideoEvents() {
         timeUpdateRafId = 0;
         setTimeBadge();
         updatePremierePlayhead();
+        updateInlinePlayheads();
     }
     video.addEventListener('timeupdate', () => {
         if (timeUpdateRafId) return;
@@ -2665,6 +2728,7 @@ function initVideoEvents() {
         }
         setTimeBadge();
         updatePremierePlayhead();
+        updateInlinePlayheads();
     });
 }
 
@@ -3047,17 +3111,19 @@ function initCustomControls() {
     customControls.isVisible = isVisible;
 
     video.removeAttribute('controls');
+    // 마우스뿐 아니라 애플펜슬(M2+ iPad의 펜슬 호버)도 컨트롤 바를 띄운다.
+    const isHoverPointer = (e) => e.pointerType === 'mouse' || e.pointerType === 'pen';
     videoFrame.addEventListener('pointerenter', (e) => {
-        if (e.pointerType === 'mouse') show();
+        if (isHoverPointer(e)) show();
     });
     videoFrame.addEventListener('pointermove', (e) => {
-        if (e.pointerType === 'mouse' && video.src) {
+        if (isHoverPointer(e) && video.src) {
             if (!bar.classList.contains('is-visible')) show();
             else scheduleAutoHide();
         }
     });
     videoFrame.addEventListener('pointerleave', (e) => {
-        if (e.pointerType === 'mouse' && !isScrubbing) hide();
+        if (isHoverPointer(e) && !isScrubbing) hide();
     });
 
     syncPlayState();
@@ -3399,6 +3465,55 @@ function initPlaybackKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
         if (shouldIgnorePlaybackShortcut(e)) return;
 
+        if (e.code === 'Space') {
+            // 버튼에 포커스가 있어도 스크롤/버튼 작동 대신 재생 토글 (편집 툴 관행)
+            e.preventDefault();
+            if (e.repeat || !video.src) return;
+            if (video.paused) video.play().catch(() => {});
+            else video.pause();
+            return;
+        }
+
+        if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+            e.preventDefault();
+            const direction = e.code === 'ArrowRight' ? 1 : -1;
+            stepFrames(direction * (e.shiftKey ? 5 : 1));
+            return;
+        }
+
+        if (e.code === 'ArrowUp' || e.code === 'ArrowDown') {
+            e.preventDefault();
+            if (!e.repeat) jumpToAdjacentMemo(e.code === 'ArrowUp' ? -1 : 1);
+            return;
+        }
+
+        if (e.code === 'Home') {
+            e.preventDefault();
+            if (video.src) seekVideoTo(0);
+            return;
+        }
+
+        if (e.code === 'End') {
+            e.preventDefault();
+            const duration = Number.isFinite(video.duration) ? video.duration : totalDuration;
+            if (video.src && Number.isFinite(duration) && duration > 0) {
+                seekVideoTo(Math.max(0, duration - 0.25));
+            }
+            return;
+        }
+
+        if (e.code === 'KeyI') {
+            e.preventDefault();
+            if (!e.repeat) markInPoint();
+            return;
+        }
+
+        if (e.code === 'KeyO') {
+            e.preventDefault();
+            if (!e.repeat) markOutAndSave();
+            return;
+        }
+
         if (e.code === TEMP_FAST_FORWARD_KEY_CODE) {
             e.preventDefault();
             if (e.repeat || isTemporaryKeyActive) return;
@@ -3496,6 +3611,237 @@ function addQuickMemoFromCurrent(durationSeconds, statusMessage, alertOnMissing 
     return true;
 }
 
+// ===== IN/OUT 편집점 마킹 =====
+// 영상을 보다가 I(또는 IN 버튼)로 시작점을 잡아두고, O(또는 OUT 버튼)를
+// 누르는 순간 구간 메모가 바로 저장되는 빠른 편집점 기록 흐름.
+
+function showMarkToast(text, tone = 'info') {
+    const toast = document.getElementById('markToast');
+    if (!toast) {
+        showFormStatus(text);
+        return;
+    }
+    toast.textContent = text;
+    toast.classList.toggle('is-error', tone === 'error');
+    toast.classList.add('is-visible');
+    clearTimeout(markToastTimer);
+    markToastTimer = setTimeout(() => toast.classList.remove('is-visible'), 1500);
+}
+
+function syncMarkInUi() {
+    const btn = document.getElementById('markInBtn');
+    if (!btn) return;
+    const armed = pendingInTime !== null;
+    btn.classList.toggle('is-armed', armed);
+    const label = btn.querySelector('.mark-btn-label');
+    if (label) label.textContent = armed ? `IN ${formatTime(pendingInTime)}` : 'IN 지정';
+}
+
+function markInPoint() {
+    if (!video.src || !Number.isFinite(video.currentTime)) {
+        showMarkToast('영상이 로드되지 않았습니다', 'error');
+        return;
+    }
+    pendingInTime = video.currentTime;
+    startTimeInput.value = formatTime(pendingInTime);
+    syncMarkInUi();
+    renderInlinePendingIns();
+    showMarkToast(`IN ${formatTime(pendingInTime)} — O를 누르면 OUT까지 저장`);
+}
+
+function markOutAndSave() {
+    if (!video.src || !Number.isFinite(video.currentTime)) {
+        showMarkToast('영상이 로드되지 않았습니다', 'error');
+        return;
+    }
+    const outTime = video.currentTime;
+    // IN을 따로 안 잡았다면 시작 입력칸 값을 IN으로 사용 (수동 입력 흐름 지원)
+    const inTime = pendingInTime !== null ? pendingInTime : parseTimeInput(startTimeInput.value);
+    if (!Number.isFinite(inTime)) {
+        showMarkToast('먼저 I를 눌러 IN 점을 지정해주세요', 'error');
+        return;
+    }
+    if (outTime <= inTime + 0.01) {
+        showMarkToast('OUT 점은 IN 점보다 뒤여야 합니다', 'error');
+        return;
+    }
+    startTimeInput.value = formatTime(inTime);
+    endTimeInput.value = formatTime(outTime);
+    const countBefore = segments.length;
+    const wasEditing = !!editingId;
+    saveSegment();
+    // saveSegment는 실패 시(검증 거부 등) 상태를 바꾸지 않는다.
+    const saved = wasEditing ? editingId === null : segments.length > countBefore;
+    if (!saved) return;
+    clearPendingIn({ silent: true });
+    showMarkToast(`구간 저장됨 · ${formatTime(inTime)} ~ ${formatTime(outTime)}`);
+}
+
+function clearPendingIn({ silent = false } = {}) {
+    if (pendingInTime === null) return;
+    pendingInTime = null;
+    syncMarkInUi();
+    renderInlinePendingIns();
+    if (!silent) showMarkToast('IN 지정 취소');
+}
+
+// 프레임 단위 이동. fastSeek는 키프레임 정렬이라 정확한 currentTime 할당을 쓰고,
+// 프레임 격자에 스냅한 뒤 반올림 오차를 피하려고 아주 작은 오프셋을 더한다.
+function stepFrames(frames) {
+    if (!video.src || !Number.isFinite(video.currentTime)) return;
+    if (!video.paused) video.pause();
+    const fps = getTimecodeFps();
+    const currentFrame = Math.round((video.currentTime || 0) * fps);
+    let target = (currentFrame + frames) / fps + 0.0001;
+    const duration = Number.isFinite(video.duration) ? video.duration : totalDuration;
+    if (Number.isFinite(duration) && duration > 0) {
+        target = Math.min(target, Math.max(0, duration - 1 / fps));
+    }
+    target = Math.max(0, target);
+    try { video.currentTime = target; } catch (_) {}
+}
+
+// 저장된 메모들의 시작점 사이를 앞뒤로 점프 — 기록한 편집점을 빠르게 재확인.
+function jumpToAdjacentMemo(direction) {
+    if (!video.src || !Number.isFinite(video.currentTime)) {
+        showMarkToast('영상이 로드되지 않았습니다', 'error');
+        return;
+    }
+    const sorted = segments
+        .filter(segment => Number.isFinite(segment.start))
+        .sort((a, b) => a.start - b.start);
+    if (sorted.length === 0) {
+        showMarkToast('저장된 메모가 없습니다', 'error');
+        return;
+    }
+    const current = video.currentTime || 0;
+    let target = null;
+    if (direction < 0) {
+        for (let i = sorted.length - 1; i >= 0; i--) {
+            if (sorted[i].start < current - 0.3) { target = sorted[i]; break; }
+        }
+    } else {
+        for (let i = 0; i < sorted.length; i++) {
+            if (sorted[i].start > current + 0.05) { target = sorted[i]; break; }
+        }
+    }
+    if (!target) {
+        showMarkToast(direction < 0 ? '이전 메모가 없습니다' : '다음 메모가 없습니다');
+        return;
+    }
+    try { video.currentTime = target.start; } catch (_) {}
+    showMarkToast(`${direction < 0 ? '◀' : '▶'} ${target.title || '제목 없음'} · ${formatTime(target.start)}`);
+}
+
+function initMarkControls() {
+    document.getElementById('markInBtn')?.addEventListener('click', markInPoint);
+    document.getElementById('markOutBtn')?.addEventListener('click', markOutAndSave);
+    document.getElementById('frameBack')?.addEventListener('click', () => stepFrames(-1));
+    document.getElementById('frameForward')?.addEventListener('click', () => stepFrames(1));
+    document.getElementById('prevMemo')?.addEventListener('click', () => jumpToAdjacentMemo(-1));
+    document.getElementById('nextMemo')?.addEventListener('click', () => jumpToAdjacentMemo(1));
+
+    // Esc로 IN 지정 취소 — 설정창/확대 모드 닫기가 우선.
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || pendingInTime === null) return;
+        if (isSettingsModalOpen()) return;
+        if (videoFrame.classList.contains('is-expanded')) return;
+        clearPendingIn();
+    });
+
+    // 타임코드 fps가 새로 감지되면 IN 라벨의 타임코드 표기 갱신.
+    document.addEventListener('timecodefpschange', syncMarkInUi);
+}
+
+// 전역 실행취소/다시실행 (모든 디자인 공통). 입력칸에서는 브라우저의
+// 텍스트 undo를 방해하지 않도록 건너뛴다.
+function initHistoryKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        if ((e.key || '').toLowerCase() !== 'z') return;
+        if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+        if (isSettingsModalOpen() || isEditableTarget(e.target)) return;
+        e.preventDefault();
+        if (e.shiftKey) redoTimelineAction();
+        else undoTimelineAction();
+    });
+}
+
+// 인라인 타임라인 막대를 드래그 스크럽 가능하게 — 터치/펜슬로 문지르면
+// 해당 위치로 이동한다. 짧은 탭은 기존 마커 클릭(구간 점프)을 유지.
+function initInlineTimelineScrub() {
+    [timelineBar, timelineBarCompact].forEach(bar => {
+        if (!bar) return;
+        let scrubPointerId = null;
+        let wasPlaying = false;
+        let moved = false;
+        let startX = 0;
+        let seekRafId = 0;
+        let pendingRatio = null;
+
+        function ratioFromEvent(e) {
+            const rect = bar.getBoundingClientRect();
+            if (rect.width <= 0) return 0;
+            return Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+        }
+
+        // 시킹 요청은 rAF로 묶어 최신 위치만 적용 (iOS Safari 시킹 충돌 방지)
+        function applyPendingSeek() {
+            seekRafId = 0;
+            if (pendingRatio === null) return;
+            const target = pendingRatio * totalDuration;
+            pendingRatio = null;
+            try { video.currentTime = target; } catch (_) {}
+        }
+
+        function scrubTo(e) {
+            const ratio = ratioFromEvent(e);
+            if (bar._playheadEl) bar._playheadEl.style.left = `${ratio * 100}%`;
+            pendingRatio = ratio;
+            if (!seekRafId) seekRafId = requestAnimationFrame(applyPendingSeek);
+        }
+
+        bar.addEventListener('pointerdown', (e) => {
+            if (!video.src || !Number.isFinite(totalDuration) || totalDuration <= 0) return;
+            scrubPointerId = e.pointerId;
+            moved = false;
+            startX = e.clientX;
+            wasPlaying = !video.paused;
+            if (wasPlaying) video.pause();
+            bar.classList.add('is-scrubbing');
+            bar.setPointerCapture?.(e.pointerId);
+            scrubTo(e);
+            e.preventDefault();
+        });
+
+        bar.addEventListener('pointermove', (e) => {
+            if (scrubPointerId !== e.pointerId) return;
+            if (Math.abs(e.clientX - startX) > 4) moved = true;
+            scrubTo(e);
+        });
+
+        function endScrub(e) {
+            if (scrubPointerId !== e.pointerId) return;
+            scrubPointerId = null;
+            bar.classList.remove('is-scrubbing');
+            bar.releasePointerCapture?.(e.pointerId);
+            if (seekRafId) { cancelAnimationFrame(seekRafId); seekRafId = 0; }
+            applyPendingSeek();
+            if (wasPlaying) video.play().catch(() => {});
+            wasPlaying = false;
+        }
+        bar.addEventListener('pointerup', endScrub);
+        bar.addEventListener('pointercancel', endScrub);
+
+        // 드래그였다면 마커의 click(구간 시작 점프 + 재생)을 막는다.
+        bar.addEventListener('click', (e) => {
+            if (!moved) return;
+            moved = false;
+            e.stopPropagation();
+            e.preventDefault();
+        }, true);
+    });
+}
+
 function initControls() {
     document.querySelectorAll('[data-set-from-video]').forEach(button => {
         button.addEventListener('click', () => {
@@ -3521,6 +3867,24 @@ function initControls() {
     cancelEditButton.addEventListener('click', () => {
         finishEditing();
         showFormStatus('초기화');
+    });
+
+    // Enter로 바로 저장 — 제목/시간/태그 입력칸에서 동작.
+    // 한글 IME 조합 확정 Enter(isComposing)는 저장으로 취급하지 않는다.
+    [segmentTitle, startTimeInput, endTimeInput, segmentTag].forEach(input => {
+        input.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || e.isComposing) return;
+            if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+            e.preventDefault();
+            saveSegment();
+        });
+    });
+    // 메모 textarea는 줄바꿈이 필요하므로 Ctrl/Cmd+Enter로 저장.
+    segmentNote.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' || e.isComposing) return;
+        if (!(e.metaKey || e.ctrlKey)) return;
+        e.preventDefault();
+        saveSegment();
     });
 
     // 현재 장면 메모 추가 버튼
@@ -3563,6 +3927,9 @@ function initControls() {
             }
             flushPendingLocalStorageSave();
         }
+
+        // 새 영상 기준으로 IN 마킹 초기화
+        clearPendingIn({ silent: true });
 
         resetFrameRateForFile(file);
         const topLevelBoxesPromise = looksLikeMp4(file)
@@ -3791,90 +4158,54 @@ initGestures();
 initCustomControls();
 initFullscreen();
 initPlaybackKeyboardShortcuts();
+initHistoryKeyboardShortcuts();
+initMarkControls();
+initInlineTimelineScrub();
 initResizers();
 initPremiereTimelineKeyboard();
 initStoragePersistence();
 loadRecentFileInfo();
 
+// 프리미어 테마 전용: 트랙 타임라인 줌 단축키(+/-/0).
+// 재생/이동/실행취소 단축키는 전역 핸들러(initPlaybackKeyboardShortcuts,
+// initHistoryKeyboardShortcuts)에서 모든 디자인 공통으로 처리한다.
 function initPremiereTimelineKeyboard() {
+    function setPremiereTimelineZoom(view, nextZoom) {
+        premiereTimelineZoom = nextZoom;
+        if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
+        renderPremiereTimeline();
+    }
+
     document.addEventListener('keydown', (e) => {
         if (!isPremiereDesign()) return;
-        // 모달 열려있으면 무시
         if (isSettingsModalOpen()) return;
-
-        const shortcutKey = (e.key || '').toLowerCase();
-        if (e.ctrlKey && !e.metaKey && !e.altKey && shortcutKey === 'z') {
-            const isUndo = !e.shiftKey;
-            const isRedo = e.shiftKey;
-            if (isUndo || isRedo) {
-                e.preventDefault();
-                if (isRedo) redoTimelineAction();
-                else undoTimelineAction();
-                return;
-            }
-        }
-
-        // 텍스트 입력 중에는 재생/줌/이동 단축키만 무시한다.
         if (isEditableTarget(e.target)) return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
 
         const view = document.getElementById('premiereTimelineView');
         if (!view) return;
 
-        if (e.code === 'Space') {
-            e.preventDefault();
-            if (!video.src) return;
-            if (video.paused) video.play().catch(() => {});
-            else video.pause();
-            return;
-        }
-
         if (e.key === '+' || e.key === '=') {
             e.preventDefault();
-            premiereTimelineZoom = Math.min(PREMIERE_TIMELINE_ZOOM_MAX, premiereTimelineZoom * 1.5);
-            if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
-            renderPremiereTimeline();
+            setPremiereTimelineZoom(view, Math.min(PREMIERE_TIMELINE_ZOOM_MAX, premiereTimelineZoom * 1.5));
             return;
         }
         if (e.key === '-' || e.key === '_') {
             e.preventDefault();
-            const minZoom = getEffectiveMinZoom();
-            premiereTimelineZoom = Math.max(minZoom, premiereTimelineZoom / 1.5);
-            if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
-            renderPremiereTimeline();
+            setPremiereTimelineZoom(view, Math.max(getEffectiveMinZoom(), premiereTimelineZoom / 1.5));
             return;
         }
         if (e.key === '0') {
             e.preventDefault();
-            premiereTimelineZoom = getEffectiveMinZoom();
-            if (view._setZoomSliderFromValue) view._setZoomSliderFromValue();
-            renderPremiereTimeline();
-            return;
-        }
-        if (e.key === 'Home') {
-            e.preventDefault();
-            video.currentTime = 0;
-            return;
-        }
-        if (e.key === 'End') {
-            e.preventDefault();
-            if (totalDuration > 0) video.currentTime = totalDuration;
-            return;
-        }
-        if (e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey) {
-            e.preventDefault();
-            video.currentTime = Math.max(0, (video.currentTime || 0) - (e.shiftKey ? 10 : 1));
-            return;
-        }
-        if (e.key === 'ArrowRight' && !e.metaKey && !e.ctrlKey) {
-            e.preventDefault();
-            const t = (video.currentTime || 0) + (e.shiftKey ? 10 : 1);
-            video.currentTime = totalDuration > 0 ? Math.min(totalDuration, t) : t;
-            return;
+            setPremiereTimelineZoom(view, getEffectiveMinZoom());
         }
     });
 }
 
 function initResizers() {
+    // ≤1180px에서는 프리미어 레이아웃이 세로 스택으로 바뀌므로 분할 핸들 비활성화
+    const isWideViewport = () => !window.matchMedia('(max-width: 1180px)').matches;
+
     addHorizontalResizer({
         getContainer: () => document.querySelector('.app-shell'),
         getCols: () => {
@@ -3895,7 +4226,7 @@ function initResizers() {
             return left && right ? [left, right] : null;
         },
         storageKey: STORAGE_PANEL_RATIO_BOTTOM,
-        designFilter: () => isPremiereDesign(),
+        designFilter: () => isPremiereDesign() && isWideViewport(),
     });
 
     addVerticalResizer({
@@ -3904,7 +4235,7 @@ function initResizers() {
             return [document.querySelector('.app-shell'), document.getElementById('premiereBottomZone')];
         },
         storageKey: STORAGE_PANEL_RATIO_VERT,
-        designFilter: () => isPremiereDesign(),
+        designFilter: () => isPremiereDesign() && isWideViewport(),
     });
 
     applyStoredPanelRatios();
@@ -3955,6 +4286,11 @@ function addHorizontalResizer({ getContainer, getCols, storageKey, designFilter 
         const r1 = cols[0].getBoundingClientRect();
         const r2 = cols[1].getBoundingClientRect();
         if (r1.width === 0 || r2.width === 0) {
+            handle.style.display = 'none';
+            return;
+        }
+        // 좁은 화면에서 패널이 세로로 쌓인 (단일 컬럼) 상태면 분할 핸들 숨김
+        if (r2.top >= r1.bottom - 2) {
             handle.style.display = 'none';
             return;
         }

@@ -475,6 +475,37 @@ body {
     opacity: 1;
 }
 
+/* IN/OUT 마킹 피드백 토스트 — 영상에서 눈을 떼지 않고 저장 결과 확인 */
+.mark-toast {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 4;
+    white-space: nowrap;
+    max-width: calc(100% - 24px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mark-toast.is-visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.mark-toast.is-error {
+    background: rgba(190, 18, 60, 0.9);
+}
+
 .player-fab {
     position: absolute;
     top: 10px;
@@ -833,6 +864,52 @@ textarea {
     height: 100%;
     border-radius: 999px;
     box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+    min-width: 6px;
+}
+
+/* 인라인 타임라인 플레이헤드 — 현재 재생 위치 표시 */
+.timeline-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--text);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* IN 점 대기 플래그 — OUT을 잡기 전까지 깜빡이며 위치 안내 */
+.timeline-in-flag {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    margin-left: -1.5px;
+    background: var(--accent);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+    z-index: 2;
+    animation: in-flag-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes in-flag-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+}
+
+/* 드래그 스크럽 가능한 타임라인 막대 */
+.timeline-bar.is-scrubbable {
+    cursor: pointer;
+    touch-action: none;
+}
+
+.timeline-bar.is-scrubbing {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .timeline-empty {
@@ -840,6 +917,127 @@ textarea {
     color: var(--text-subtle);
     text-align: center;
     padding: 18px 0;
+}
+
+/* ===== IN/OUT 마킹 바 — 보면서 바로 편집점을 기록하는 핵심 동선 ===== */
+.mark-bar {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.mark-bar-group {
+    display: flex;
+    gap: 6px;
+}
+
+.mark-bar-group-main {
+    flex: 1;
+    justify-content: center;
+}
+
+.mark-step-btn {
+    min-width: 52px;
+    padding-left: 10px;
+    padding-right: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+.mark-in-btn,
+.mark-out-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex: 1;
+    max-width: 220px;
+    font-weight: 700;
+    border: 1px solid var(--border-strong);
+    background: var(--panel-muted);
+    color: var(--text);
+}
+
+.mark-btn-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 5px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    background: rgba(15, 23, 42, 0.08);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+}
+
+.mark-btn-label {
+    font-variant-numeric: tabular-nums;
+}
+
+.mark-in-btn:hover,
+.mark-in-btn.is-armed {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+.mark-in-btn.is-armed .mark-btn-key {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+}
+
+.mark-out-btn:hover {
+    border-color: var(--success);
+    background: rgba(22, 163, 74, 0.12);
+    color: var(--success);
+}
+
+[data-theme="dark"] .mark-btn-key {
+    background: rgba(241, 245, 249, 0.12);
+    border-color: rgba(241, 245, 249, 0.18);
+}
+
+[data-theme="dark"] .mark-in-btn:hover,
+[data-theme="dark"] .mark-in-btn.is-armed {
+    color: #bfdbfe;
+}
+
+[data-theme="dark"] .mark-out-btn:hover {
+    color: #86efac;
+}
+
+/* 좁은 화면: IN/OUT을 윗줄 전체 폭으로, 프레임/메모 이동은 아랫줄로 */
+@media (max-width: 640px) {
+    .mark-bar {
+        flex-wrap: wrap;
+    }
+
+    .mark-bar-group-main {
+        order: -1;
+        flex-basis: 100%;
+    }
+
+    .mark-in-btn,
+    .mark-out-btn {
+        max-width: none;
+    }
+
+    .mark-bar-group:not(.mark-bar-group-main) {
+        flex: 1;
+    }
+
+    .mark-bar-group:not(.mark-bar-group-main) button {
+        flex: 1;
+    }
+}
+
+/* iPad 디자인: 인라인 타임라인도 손가락으로 문지르기 쉽게 두껍게 */
+[data-design="ipad"] .timeline-bar {
+    height: 24px;
 }
 
 .search-row {
@@ -1116,6 +1314,15 @@ textarea {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.shortcut-group-title {
+    margin: 16px 0 8px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
 }
 
 .shortcut-row {
@@ -1474,7 +1681,7 @@ textarea {
 
     [data-design="ipad"] .app-shell {
         height: auto;
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr !important; /* 인라인 분할 비율보다 우선 */
         grid-template-rows: auto auto;
     }
 
@@ -1598,7 +1805,9 @@ textarea {
     .app-shell {
         margin: 0 auto;
         height: auto;
-        grid-template-columns: 1fr;
+        /* 분할 핸들이 남긴 인라인 grid-template-columns보다 우선해야
+           좁은 화면에서 단일 칼럼 스택이 깨지지 않는다. */
+        grid-template-columns: 1fr !important;
         grid-auto-rows: auto;
         max-width: 900px;
     }
@@ -1916,6 +2125,22 @@ textarea {
 /* 컴팩트 인라인 타임라인 — 프리미어 모드에선 큰 타임라인이 하단으로 옮겨가므로 숨김 */
 [data-design="premiere"] .video-panel > .inline-timeline {
     display: none;
+}
+
+/* IN/OUT 마킹 바 — 소스 모니터 하단 트랜스포트처럼 표시 */
+[data-design="premiere"] .video-panel > .mark-bar {
+    margin-top: 0;
+    padding: 8px 10px 10px;
+    background: var(--premiere-monitor-bg);
+}
+
+[data-design="premiere"] .mark-in-btn,
+[data-design="premiere"] .mark-out-btn {
+    border-radius: 2px;
+}
+
+[data-design="premiere"] .mark-btn-key {
+    border-radius: 3px;
 }
 
 /* ─── Notes 패널(메모 입력) 본문 ─── */
@@ -2248,9 +2473,10 @@ textarea {
         overflow: auto;
     }
     [data-design="premiere"] .app-shell {
-        grid-template-columns: 1fr;
+        /* 분할 핸들의 인라인 스타일(grid/flex)보다 우선 — 스택 레이아웃 유지 */
+        grid-template-columns: 1fr !important;
         grid-auto-rows: auto;
-        flex: none;
+        flex: none !important;
     }
     [data-design="premiere"] .premiere-bottom-zone {
         display: flex;
@@ -2261,7 +2487,7 @@ textarea {
         overflow: visible;
         container-name: none;
         container-type: normal;
-        flex: none;
+        flex: none !important;
     }
     [data-design="premiere"] #premiereBottomZone > #uploadCard,
     [data-design="premiere"] #premiereBottomZone > #fileInfoCard,
@@ -3396,7 +3622,37 @@ body.is-resizing .panel-resizer {
 
 /* --- 타임라인/메모 카드 --- */
 [data-design="pencil"] .timeline-bar {
-    height: 22px;
+    /* 드래그 스크럽 도입에 맞춰 손가락/펜슬로 문지르기 쉬운 두께 */
+    height: 30px;
+    border-radius: 12px;
+}
+
+[data-design="pencil"] .timeline-marker {
+    border-radius: 10px;
+}
+
+/* --- IN/OUT 마킹 바: 펜슬·터치 1순위 타깃 --- */
+[data-design="pencil"] .mark-bar {
+    gap: 10px;
+}
+
+[data-design="pencil"] .mark-step-btn {
+    min-width: var(--pencil-touch-min);
+    padding-left: 12px;
+    padding-right: 12px;
+}
+
+[data-design="pencil"] .mark-in-btn,
+[data-design="pencil"] .mark-out-btn {
+    min-height: var(--pencil-touch-lg);
+    max-width: none;
+    font-size: 1.05rem;
+}
+
+[data-design="pencil"] .mark-btn-key {
+    min-width: 26px;
+    height: 26px;
+    font-size: 0.85rem;
 }
 
 [data-design="pencil"] .segment-card {
@@ -3501,7 +3757,7 @@ body.is-resizing .panel-resizer {
 
     [data-design="pencil"] .app-shell {
         height: auto;
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr !important; /* 인라인 분할 비율보다 우선 */
         grid-template-rows: auto auto;
     }
 
