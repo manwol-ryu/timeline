@@ -11,8 +11,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260609-3">
-    <script defer src="app.js?v=20260609-3"></script>
+    <link rel="stylesheet" href="styles.css?v=20260609-4">
+    <script defer src="app.js?v=20260609-4"></script>
 </head>
 <body>
     <button class="settings-button" id="settingsButton" aria-label="설정">
@@ -114,14 +114,46 @@
             <div class="settings-section settings-shortcuts-section" hidden>
                 <h3>단축키</h3>
                 <p>입력칸이나 설정창 안에서는 플레이어 단축키가 동작하지 않습니다.</p>
-                <div class="shortcut-list" aria-label="플레이어 단축키 목록">
+                <h4 class="shortcut-group-title">마킹 (편집점 기록)</h4>
+                <div class="shortcut-list" aria-label="마킹 단축키 목록">
                     <div class="shortcut-row">
-                        <div class="shortcut-keys"><kbd>A</kbd></div>
-                        <span>-5초 이동</span>
+                        <div class="shortcut-keys"><kbd>I</kbd></div>
+                        <span>현재 위치를 IN 점으로 지정</span>
                     </div>
                     <div class="shortcut-row">
-                        <div class="shortcut-keys"><kbd>G</kbd></div>
-                        <span>+5초 이동</span>
+                        <div class="shortcut-keys"><kbd>O</kbd></div>
+                        <span>현재 위치를 OUT 점으로 지정하고 바로 저장</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>M</kbd></div>
+                        <span>현재 위치부터 10초 메모 바로 추가</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>Esc</kbd></div>
+                        <span>IN 지정 취소 / 확대·설정창 닫기</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>Enter</kbd></div>
+                        <span>제목·시간·태그 입력 중 메모 저장 (메모칸은 Ctrl+Enter)</span>
+                    </div>
+                </div>
+                <h4 class="shortcut-group-title">재생 / 이동</h4>
+                <div class="shortcut-list" aria-label="재생 이동 단축키 목록">
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>Space</kbd></div>
+                        <span>재생 / 일시정지</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>←</kbd><kbd>→</kbd></div>
+                        <span>1프레임 이동 (Shift와 함께 5프레임)</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>↑</kbd><kbd>↓</kbd></div>
+                        <span>이전 / 다음 메모 위치로 점프</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>A</kbd><kbd>G</kbd></div>
+                        <span>-5초 / +5초 이동</span>
                     </div>
                     <div class="shortcut-row">
                         <div class="shortcut-keys"><kbd>S</kbd><kbd>J</kbd></div>
@@ -132,9 +164,12 @@
                         <span>+10초 이동</span>
                     </div>
                     <div class="shortcut-row">
-                        <div class="shortcut-keys"><kbd>M</kbd></div>
-                        <span>현재 위치부터 10초 메모 바로 추가</span>
+                        <div class="shortcut-keys"><kbd>Home</kbd><kbd>End</kbd></div>
+                        <span>영상 처음 / 끝으로 이동</span>
                     </div>
+                </div>
+                <h4 class="shortcut-group-title">배속</h4>
+                <div class="shortcut-list" aria-label="배속 단축키 목록">
                     <div class="shortcut-row">
                         <div class="shortcut-keys"><kbd>D</kbd></div>
                         <span>누르고 있는 동안 2배속</span>
@@ -147,9 +182,16 @@
                         <div class="shortcut-keys"><kbd>[</kbd><kbd>]</kbd></div>
                         <span>배속 내리기 / 올리기</span>
                     </div>
+                </div>
+                <h4 class="shortcut-group-title">기타</h4>
+                <div class="shortcut-list" aria-label="기타 단축키 목록">
                     <div class="shortcut-row">
-                        <div class="shortcut-keys"><kbd>Esc</kbd></div>
-                        <span>확대 모드 또는 설정창 닫기</span>
+                        <div class="shortcut-keys"><kbd>Ctrl</kbd><kbd>Z</kbd></div>
+                        <span>메모 변경 실행취소 (Shift와 함께 다시실행)</span>
+                    </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>+</kbd><kbd>−</kbd><kbd>0</kbd></div>
+                        <span>프리미어 테마: 트랙 타임라인 확대 / 축소 / 초기화</span>
                     </div>
                 </div>
             </div>
@@ -289,6 +331,28 @@
                             <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
                         </svg>
                     </button>
+                    <div id="markToast" class="mark-toast" aria-live="polite"></div>
+                </div>
+
+                <div class="mark-bar" aria-label="편집점 마킹 도구">
+                    <div class="mark-bar-group" aria-label="프레임 이동">
+                        <button class="ghost mark-step-btn" id="frameBack" type="button" title="1프레임 뒤로 (←)">−1f</button>
+                        <button class="ghost mark-step-btn" id="frameForward" type="button" title="1프레임 앞으로 (→)">+1f</button>
+                    </div>
+                    <div class="mark-bar-group mark-bar-group-main" aria-label="IN/OUT 마킹">
+                        <button class="mark-in-btn" id="markInBtn" type="button" title="현재 위치를 IN 점으로 (I)">
+                            <span class="mark-btn-key">I</span>
+                            <span class="mark-btn-label">IN 지정</span>
+                        </button>
+                        <button class="mark-out-btn" id="markOutBtn" type="button" title="현재 위치를 OUT 점으로 지정하고 바로 저장 (O)">
+                            <span class="mark-btn-key">O</span>
+                            <span class="mark-btn-label">OUT 저장</span>
+                        </button>
+                    </div>
+                    <div class="mark-bar-group" aria-label="메모 사이 이동">
+                        <button class="ghost mark-step-btn" id="prevMemo" type="button" title="이전 메모로 (↑)">◀◀</button>
+                        <button class="ghost mark-step-btn" id="nextMemo" type="button" title="다음 메모로 (↓)">▶▶</button>
+                    </div>
                 </div>
 
                 <div class="inline-timeline">
