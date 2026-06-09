@@ -5,14 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>영상 타임라인 메모 도구</title>
     <meta name="theme-color" content="#2563eb">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="타임라인 메모">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260609-4">
-    <script defer src="app.js?v=20260609-4"></script>
+    <link rel="stylesheet" href="styles.css?v=20260609-5">
+    <script defer src="app.js?v=20260609-5"></script>
 </head>
 <body>
     <button class="settings-button" id="settingsButton" aria-label="설정">
@@ -260,7 +261,7 @@
 
             <div class="settings-section settings-general-section">
                 <h3>정보</h3>
-                <p>영상 타임라인 메모 도구 v1.0<br>브라우저의 localStorage를 사용하여 데이터를 저장합니다.</p>
+                <p>영상 타임라인 메모 도구 v1.1<br>브라우저의 localStorage를 사용하여 데이터를 저장합니다. 기록한 편집점은 TXT·CSV·EDL·JSON으로 내보낼 수 있고, EDL은 프리미어 프로 / 다빈치 리졸브에서 바로 불러올 수 있습니다.</p>
             </div>
         </div>
     </div>
@@ -286,10 +287,8 @@
                         </div>
                         <div class="file-actions">
                             <button class="ghost" id="changeVideo">파일 변경</button>
-                            <button class="ghost" id="convertVideo">파일 변환</button>
                         </div>
                     </div>
-                    <span id="convertStatus" class="convert-status" aria-live="polite"></span>
                     <p id="videoLoadingStatus" class="video-loading-status" aria-live="polite"></p>
                     <div id="videoLoadingProgress" class="video-loading-progress" hidden>
                         <div class="video-loading-progress-bar">
@@ -322,6 +321,12 @@
                         <span id="customCurrentTime" class="custom-controls-time">00:00:00:00</span>
                         <input type="range" id="customScrubber" class="custom-controls-scrubber" min="0" max="0" step="0.01" value="0" aria-label="재생 위치">
                         <span id="customTotalTime" class="custom-controls-time">--:--:--:--</span>
+                    </div>
+                    <div id="expandedMarkBar" class="expanded-mark-bar" aria-label="전체화면 편집점 마킹">
+                        <button class="expanded-mark-btn" id="expFrameBack" type="button" title="1프레임 뒤로 (←)">−1f</button>
+                        <button class="expanded-mark-btn expanded-mark-in" id="expMarkIn" type="button" title="현재 위치를 IN 점으로 (I)">IN</button>
+                        <button class="expanded-mark-btn expanded-mark-out" id="expMarkOut" type="button" title="현재 위치를 OUT 점으로 지정하고 바로 저장 (O)">OUT</button>
+                        <button class="expanded-mark-btn" id="expFrameForward" type="button" title="1프레임 앞으로 (→)">+1f</button>
                     </div>
                     <button id="fullscreenButton" class="player-fab" type="button" aria-label="전체화면 보기">
                         <svg id="fullscreenIconEnter" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -404,11 +409,15 @@
                         </div>
                         <div>
                             <label for="segmentColor">표시 색상</label>
-                            <input type="color" id="segmentColor" value="#3b82f6">
+                            <div class="color-row">
+                                <input type="color" id="segmentColor" value="#3b82f6">
+                                <div id="colorSwatches" class="color-swatches" aria-label="색상 프리셋"></div>
+                            </div>
                         </div>
                         <div class="full-width">
                             <label for="segmentTag">태그 (선택)</label>
                             <input type="text" id="segmentTag" placeholder="예) B-roll, 강조 포인트">
+                            <div id="tagChips" class="tag-chips" aria-label="최근 사용한 태그" hidden></div>
                         </div>
                     </div>
 
@@ -435,6 +444,8 @@
                         <input type="text" id="searchInput" placeholder="메모, 제목, 태그 검색">
                         <button class="ghost" id="copyNotes">메모 복사</button>
                         <button class="ghost" id="exportTxt">TXT 저장</button>
+                        <button class="ghost" id="exportCsv">CSV 저장</button>
+                        <button class="ghost" id="exportEdl">EDL 저장</button>
                         <button class="ghost" id="exportJson">JSON 저장</button>
                         <button class="ghost" id="importJson">JSON 불러오기</button>
                         <button class="ghost" id="clearAll">전체 삭제</button>

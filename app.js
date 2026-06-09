@@ -14,8 +14,6 @@ const fileInfoCard = document.getElementById('fileInfoCard');
 const fileNameText = document.getElementById('fileName');
 const fileDetailsText = document.getElementById('fileDetails');
 const changeVideoButton = document.getElementById('changeVideo');
-const convertVideoButton = document.getElementById('convertVideo');
-const convertStatus = document.getElementById('convertStatus');
 const videoLoadingStatus = document.getElementById('videoLoadingStatus');
 const videoLoadingProgress = document.getElementById('videoLoadingProgress');
 const videoLoadingProgressFill = document.getElementById('videoLoadingProgressFill');
@@ -37,6 +35,8 @@ const formStatus = document.getElementById('formStatus');
 const searchInput = document.getElementById('searchInput');
 const copyNotesButton = document.getElementById('copyNotes');
 const exportTxtButton = document.getElementById('exportTxt');
+const exportCsvButton = document.getElementById('exportCsv');
+const exportEdlButton = document.getElementById('exportEdl');
 const exportJsonButton = document.getElementById('exportJson');
 const importJsonButton = document.getElementById('importJson');
 const importJsonInput = document.getElementById('importJsonInput');
@@ -57,6 +57,9 @@ let currentLoadedFaststartActive = false;
 // IN/OUT 마킹: I로 IN 점을 잡아두고 O로 OUT 점을 잡는 순간 메모로 저장된다.
 let pendingInTime = null;
 let markToastTimer = null;
+// 구간 재생: '구간 재생'으로 시작하면 OUT 지점에서 자동 일시정지된다.
+let segmentPreviewEnd = null;
+let segmentPreviewSeekGuard = false;
 const DEFAULT_VIDEO_ASPECT = '16 / 9';
 const DEFAULT_SEGMENT_COLOR = '#3b82f6';
 const STORAGE_KEY_PREFIX = 'timeline_data_';
@@ -355,7 +358,8 @@ function buildPremiereTimelineDom() {
         const t = Math.max(0, Math.min(100, Number(val))) / 100;
         premiereTimelineZoom = Math.exp(min + (max - min) * t);
         zoomLevel.textContent = `${premiereTimelineZoom.toFixed(1)} px/s`;
-        renderPremiereTimeline();
+        // 슬라이더 드래그 중 매 input마다 전체 DOM을 다시 그리지 않도록 rAF로 묶는다.
+        schedulePremiereTimelineRender();
     }
 
     function setZoomSliderFromValue() {
@@ -410,8 +414,7 @@ function buildPremiereTimelineDom() {
         if (action === 'seek' && Number.isFinite(seg.start)) {
             video.currentTime = seg.start;
         } else if (action === 'play' && Number.isFinite(seg.start)) {
-            video.currentTime = seg.start;
-            video.play();
+            playSegmentRange(seg);
         } else if (action === 'edit') {
             startEditing(seg.id);
             detail.hidden = true;
@@ -701,8 +704,9 @@ function openPremiereClipDetail(segId) {
     detail.hidden = false;
     detail.dataset.id = String(seg.id);
     detail.querySelector('.premiere-tl-detail-title').textContent = seg.title || '제목 없음';
+    const detailDuration = formatDurationShort(seg.end - seg.start);
     detail.querySelector('.premiere-tl-detail-time').textContent =
-        `${formatTime(seg.start)} ~ ${formatTime(seg.end)}`;
+        `${formatTime(seg.start)} ~ ${formatTime(seg.end)}` + (detailDuration ? ` · ${detailDuration}` : '');
     detail.querySelector('.premiere-tl-detail-note').textContent = seg.note || '작성된 메모가 없습니다.';
     const tagEl = detail.querySelector('.premiere-tl-detail-tag');
     if (seg.tag) {
@@ -831,6 +835,9 @@ function attachTimelineScrubHandlers(view) {
             if (e.button !== undefined && e.button !== 0) return;
             // 클립 위에서는 시킹 비활성화 (클립 드래그가 우선)
             if (e.target.closest('.premiere-tl-clip')) return;
+            // 터치/펜슬은 룰러에서 시작할 때만 스크럽 — 트랙 영역 드래그는
+            // 타임라인 패닝(스크롤)으로 남겨 손가락 탐색과 충돌하지 않게 한다.
+            if (e.pointerType !== 'mouse' && !e.target.closest('.premiere-tl-ruler')) return;
             scrubbing = true;
             wasPlaying = !video.paused;
             if (wasPlaying) video.pause();
@@ -1116,6 +1123,26 @@ function formatTime(seconds) {
     return [hours, minutes, secs, frame].map(unit => String(unit).padStart(2, '0')).join(':');
 }
 
+function formatDurationShort(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '';
+    if (seconds < 60) return `${Math.round(seconds * 10) / 10}초`;
+    const minutes = Math.floor(seconds / 60);
+    const secs = Math.round(seconds % 60);
+    return `${minutes}분 ${secs}초`;
+}
+
+// 구간 재생 — 시작점으로 이동해 재생을 시작하고, OUT 지점에 도달하면
+// 자동으로 일시정지해 편집점이 의도한 곳에서 끝나는지 바로 확인할 수 있다.
+function playSegmentRange(segment) {
+    if (!video.src || !Number.isFinite(segment?.start)) return;
+    segmentPreviewEnd = Number.isFinite(segment.end) && segment.end > segment.start
+        ? segment.end
+        : null;
+    segmentPreviewSeekGuard = true;
+    try { video.currentTime = segment.start; } catch (_) {}
+    video.play().catch(() => {});
+}
+
 function parseTimeInput(value) {
     const raw = (value || '').trim();
     if (!raw) return NaN;
@@ -1184,9 +1211,6 @@ function updateFileInfo(file) {
         fileDetailsText.textContent = '-- MB';
         uploadCard.style.display = 'block';
         fileInfoCard.style.display = 'none';
-        convertStatus.textContent = '';
-        convertVideoButton.disabled = false;
-        convertVideoButton.textContent = '파일 변환';
         setVideoLoadingStatus('ready');
         hideVideoLoadingProgress();
         setVideoAspect();
@@ -1199,27 +1223,9 @@ function updateFileInfo(file) {
     fileNameText.textContent = file.name;
     uploadCard.style.display = 'none';
     fileInfoCard.style.display = 'flex';
-    convertStatus.textContent = '';
-    convertVideoButton.disabled = false;
-    convertVideoButton.textContent = '파일 변환';
     setVideoLoadingStatus('ready');
     refreshFileDetails();
     renderPremiereTimeline();
-}
-
-function simulateConversion() {
-    if (!selectedFileSize) {
-        convertStatus.textContent = '먼저 영상을 선택해주세요.';
-        return;
-    }
-    convertVideoButton.disabled = true;
-    convertVideoButton.textContent = '변환 중...';
-    convertStatus.textContent = '최적화된 MP4로 변환 중입니다...';
-    setTimeout(() => {
-        convertVideoButton.disabled = false;
-        convertVideoButton.textContent = '파일 변환';
-        convertStatus.textContent = '변환 완료! 최적화된 파일이 준비되었어요.';
-    }, 1600);
 }
 
 function setActiveTab(target) {
@@ -1438,7 +1444,9 @@ function createSegmentCard(segment) {
 
     const timeText = document.createElement('span');
     timeText.className = 'segment-time';
-    timeText.textContent = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`;
+    const durationText = formatDurationShort(segment.end - segment.start);
+    timeText.textContent = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`
+        + (durationText ? ` · ${durationText}` : '');
 
     header.append(titleWrap, timeText);
 
@@ -1460,13 +1468,9 @@ function createSegmentCard(segment) {
 
     const jumpButton = document.createElement('button');
     jumpButton.className = 'success';
-    jumpButton.textContent = '재생';
-    jumpButton.addEventListener('click', () => {
-        if (Number.isFinite(segment.start)) {
-            video.currentTime = segment.start;
-            video.play();
-        }
-    });
+    jumpButton.textContent = '구간 재생';
+    jumpButton.title = '구간을 재생하고 OUT 지점에서 자동 정지';
+    jumpButton.addEventListener('click', () => playSegmentRange(segment));
 
     const editButton = document.createElement('button');
     editButton.className = 'ghost';
@@ -1539,7 +1543,73 @@ function renderAll() {
         renderSegments(searchInput.value);
     }
     schedulePremiereTimelineRender();
+    renderTagChips();
     saveToLocalStorage();
+}
+
+// ===== 빠른 입력: 색상 프리셋 + 최근 태그 칩 =====
+// 색상으로 편집점을 분류하는 흐름에서 OS 색상 피커를 띄우지 않고
+// 한 번의 탭으로 색을 고르고, 반복되는 태그도 탭 한 번으로 입력한다.
+
+const COLOR_PRESETS = [
+    '#3b82f6', '#ef4444', '#f59e0b', '#10b981',
+    '#8b5cf6', '#ec4899', '#06b6d4', '#64748b',
+];
+const MAX_TAG_CHIPS = 8;
+
+function syncColorSwatches() {
+    const wrap = document.getElementById('colorSwatches');
+    if (!wrap) return;
+    const current = normalizeColor(segmentColor.value);
+    wrap.querySelectorAll('.color-swatch').forEach(button => {
+        button.classList.toggle('is-active', button.dataset.color === current);
+    });
+}
+
+function initColorSwatches() {
+    const wrap = document.getElementById('colorSwatches');
+    if (!wrap) return;
+    COLOR_PRESETS.forEach(color => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'color-swatch';
+        button.dataset.color = color;
+        button.style.background = color;
+        button.setAttribute('aria-label', `색상 ${color}`);
+        button.addEventListener('click', () => {
+            segmentColor.value = color;
+            syncColorSwatches();
+        });
+        wrap.appendChild(button);
+    });
+    segmentColor.addEventListener('input', syncColorSwatches);
+    syncColorSwatches();
+}
+
+function renderTagChips() {
+    const wrap = document.getElementById('tagChips');
+    if (!wrap) return;
+    const seen = new Set();
+    const tags = [];
+    // 뒤(최근 구간)에서부터 모아 마지막에 쓴 태그가 먼저 보이게 한다.
+    for (let i = segments.length - 1; i >= 0 && tags.length < MAX_TAG_CHIPS; i--) {
+        const tag = (segments[i].tag || '').trim();
+        if (!tag || seen.has(tag.toLowerCase())) continue;
+        seen.add(tag.toLowerCase());
+        tags.push(tag);
+    }
+    wrap.textContent = '';
+    wrap.hidden = tags.length === 0;
+    tags.forEach(tag => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'tag-chip';
+        button.textContent = `#${tag}`;
+        button.addEventListener('click', () => {
+            segmentTag.value = tag;
+        });
+        wrap.appendChild(button);
+    });
 }
 
 function startEditing(id) {
@@ -1551,6 +1621,7 @@ function startEditing(id) {
     endTimeInput.value = formatTime(segment.end);
     segmentTag.value = segment.tag || '';
     segmentColor.value = segment.color;
+    syncColorSwatches();
     segmentNote.value = segment.note || '';
     saveButton.textContent = '수정 저장';
     cancelEditButton.style.display = 'inline-block';
@@ -1579,6 +1650,7 @@ function resetForm() {
     segmentNote.value = '';
     const defaultColor = localStorage.getItem(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
     segmentColor.value = defaultColor;
+    syncColorSwatches();
     if (Number.isFinite(video.currentTime)) {
         const formatted = formatTime(video.currentTime);
         startTimeInput.value = formatted;
@@ -1682,6 +1754,19 @@ function copyNotes() {
     }
 }
 
+function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    // DOM에 붙여야 일부 브라우저(iOS Safari 등)에서 download 속성이 동작하고,
+    // revoke는 다운로드가 시작된 뒤로 미뤄야 파일명이 유실되지 않는다.
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function exportTxt() {
     if (segments.length === 0) {
         alert('저장할 메모가 없습니다.');
@@ -1694,13 +1779,59 @@ function exportTxt() {
         const note = segment.note || '메모 없음';
         return [timeline, tag, title, note].join(' - ');
     }).join('\n');
-    const blob = new Blob([lines], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${getBaseFileName()}_타임라인.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(new Blob([lines], { type: 'text/plain;charset=utf-8' }), `${getBaseFileName()}_타임라인.txt`);
+}
+
+function exportCsv() {
+    if (segments.length === 0) {
+        alert('저장할 메모가 없습니다.');
+        return;
+    }
+    const esc = value => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const header = ['번호', '시작', '종료', '길이', '제목', '태그', '메모', '색상'];
+    const rows = segments.map((segment, index) => [
+        index + 1,
+        formatTime(segment.start),
+        formatTime(segment.end),
+        formatTime(segment.end - segment.start),
+        segment.title || '',
+        segment.tag || '',
+        segment.note || '',
+        segment.color || '',
+    ].map(esc).join(','));
+    // BOM을 붙여야 Excel/Numbers에서 한글이 깨지지 않는다.
+    const csv = '\uFEFF' + [header.map(esc).join(','), ...rows].join('\r\n');
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), `${getBaseFileName()}_타임라인.csv`);
+}
+
+// CMX3600 EDL — 기록한 편집점 구간을 순서대로 이어붙인 가편집 시퀀스.
+// 프리미어 프로 / 다빈치 리졸브에서 파일 > 가져오기로 바로 읽을 수 있다.
+function exportEdl() {
+    if (segments.length === 0) {
+        alert('내보낼 메모가 없습니다.');
+        return;
+    }
+    const fps = getTimecodeFps();
+    const sorted = segments.slice().sort((a, b) => a.start - b.start);
+    const lines = [`TITLE: ${getBaseFileName()}`, 'FCM: NON-DROP FRAME', ''];
+    let recordCursor = 0;
+    sorted.forEach((segment, index) => {
+        if (!Number.isFinite(segment.start) || !Number.isFinite(segment.end)) return;
+        const duration = Math.max(1 / fps, segment.end - segment.start);
+        const eventNumber = String(index + 1).padStart(3, '0');
+        lines.push(
+            `${eventNumber}  AX       B     C        ` +
+            `${formatTime(segment.start)} ${formatTime(segment.end)} ` +
+            `${formatTime(recordCursor)} ${formatTime(recordCursor + duration)}`
+        );
+        if (selectedFileName) lines.push(`* FROM CLIP NAME: ${selectedFileName}`);
+        const comment = [segment.title, segment.tag ? `#${segment.tag}` : '', segment.note]
+            .filter(Boolean).join(' | ').replace(/\s+/g, ' ').trim();
+        if (comment) lines.push(`* COMMENT: ${comment}`);
+        lines.push('');
+        recordCursor += duration;
+    });
+    downloadBlob(new Blob([lines.join('\r\n')], { type: 'text/plain;charset=utf-8' }), `${getBaseFileName()}.edl`);
 }
 
 function exportJson() {
@@ -1714,13 +1845,10 @@ function exportJson() {
         videoName: selectedFileName,
         segments,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${getBaseFileName()}_타임라인.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(
+        new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+        `${getBaseFileName()}_타임라인.json`
+    );
 }
 
 function importJsonFile(file) {
@@ -2101,6 +2229,7 @@ function toggleClearTag(enabled) {
 function saveDefaultColor(color) {
     localStorage.setItem(STORAGE_DEFAULT_COLOR, color);
     segmentColor.value = color;
+    syncColorSwatches();
     showFormStatus('기본 색상 저장 완료');
 }
 
@@ -2108,6 +2237,7 @@ function resetDefaultColor() {
     localStorage.removeItem(STORAGE_DEFAULT_COLOR);
     document.getElementById('defaultColorSetting').value = DEFAULT_SEGMENT_COLOR;
     segmentColor.value = DEFAULT_SEGMENT_COLOR;
+    syncColorSwatches();
     showFormStatus('기본 색상 초기화 완료');
 }
 
@@ -2720,6 +2850,24 @@ function initVideoEvents() {
         if (timeUpdateRafId) return;
         timeUpdateRafId = requestAnimationFrame(flushTimeUpdateUI);
     });
+    // 구간 재생: OUT 지점 도달 시 자동 일시정지. 정확도가 중요해 rAF로 미루지 않는다.
+    video.addEventListener('timeupdate', () => {
+        if (segmentPreviewEnd === null) return;
+        if ((video.currentTime || 0) >= segmentPreviewEnd - 0.03) {
+            const stopAt = segmentPreviewEnd;
+            segmentPreviewEnd = null;
+            video.pause();
+            try { video.currentTime = stopAt; } catch (_) {}
+        }
+    });
+    // 사용자가 직접 시킹하면 구간 재생 모드 해제 (구간 재생 자신의 첫 시킹은 제외).
+    video.addEventListener('seeking', () => {
+        if (segmentPreviewSeekGuard) {
+            segmentPreviewSeekGuard = false;
+            return;
+        }
+        segmentPreviewEnd = null;
+    });
     // 시킹/재개 직후에는 즉시 한 번 동기 갱신해 응답성 유지.
     video.addEventListener('seeked', () => {
         if (timeUpdateRafId) {
@@ -3223,7 +3371,8 @@ function initFullscreen() {
     });
 
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && isExpanded()) {
+        // 설정창이 열려 있으면 Esc는 설정창만 닫는다 (확대 모드 유지).
+        if (e.key === 'Escape' && isExpanded() && !isSettingsModalOpen()) {
             setExpanded(false);
         }
     });
@@ -3629,12 +3778,15 @@ function showMarkToast(text, tone = 'info') {
 }
 
 function syncMarkInUi() {
-    const btn = document.getElementById('markInBtn');
-    if (!btn) return;
     const armed = pendingInTime !== null;
-    btn.classList.toggle('is-armed', armed);
-    const label = btn.querySelector('.mark-btn-label');
-    if (label) label.textContent = armed ? `IN ${formatTime(pendingInTime)}` : 'IN 지정';
+    const btn = document.getElementById('markInBtn');
+    if (btn) {
+        btn.classList.toggle('is-armed', armed);
+        const label = btn.querySelector('.mark-btn-label');
+        if (label) label.textContent = armed ? `IN ${formatTime(pendingInTime)}` : 'IN 지정';
+    }
+    const expandedBtn = document.getElementById('expMarkIn');
+    if (expandedBtn) expandedBtn.classList.toggle('is-armed', armed);
 }
 
 function markInPoint() {
@@ -3656,17 +3808,22 @@ function markOutAndSave() {
     }
     const outTime = video.currentTime;
     // IN을 따로 안 잡았다면 시작 입력칸 값을 IN으로 사용 (수동 입력 흐름 지원)
-    const inTime = pendingInTime !== null ? pendingInTime : parseTimeInput(startTimeInput.value);
+    let inTime = pendingInTime !== null ? pendingInTime : parseTimeInput(startTimeInput.value);
     if (!Number.isFinite(inTime)) {
         showMarkToast('먼저 I를 눌러 IN 점을 지정해주세요', 'error');
         return;
     }
-    if (outTime <= inTime + 0.01) {
-        showMarkToast('OUT 점은 IN 점보다 뒤여야 합니다', 'error');
+    // IN보다 앞에서 OUT을 찍으면 두 점을 자동으로 맞바꿔 저장 (재정렬보다 빠른 동선)
+    let finalOut = outTime;
+    if (finalOut < inTime - 0.01) {
+        [inTime, finalOut] = [finalOut, inTime];
+    }
+    if (finalOut <= inTime + 0.01) {
+        showMarkToast('IN과 OUT이 같은 위치입니다', 'error');
         return;
     }
     startTimeInput.value = formatTime(inTime);
-    endTimeInput.value = formatTime(outTime);
+    endTimeInput.value = formatTime(finalOut);
     const countBefore = segments.length;
     const wasEditing = !!editingId;
     saveSegment();
@@ -3674,7 +3831,7 @@ function markOutAndSave() {
     const saved = wasEditing ? editingId === null : segments.length > countBefore;
     if (!saved) return;
     clearPendingIn({ silent: true });
-    showMarkToast(`구간 저장됨 · ${formatTime(inTime)} ~ ${formatTime(outTime)}`);
+    showMarkToast(`구간 저장됨 · ${formatTime(inTime)} ~ ${formatTime(finalOut)}`);
 }
 
 function clearPendingIn({ silent = false } = {}) {
@@ -3740,6 +3897,13 @@ function initMarkControls() {
     document.getElementById('frameForward')?.addEventListener('click', () => stepFrames(1));
     document.getElementById('prevMemo')?.addEventListener('click', () => jumpToAdjacentMemo(-1));
     document.getElementById('nextMemo')?.addEventListener('click', () => jumpToAdjacentMemo(1));
+
+    // 확대(전체화면) 모드 플로팅 마킹 바 — iPad에서 키보드 없이도
+    // 전체화면으로 보면서 IN/OUT과 프레임 이동을 바로 쓸 수 있다.
+    document.getElementById('expMarkIn')?.addEventListener('click', markInPoint);
+    document.getElementById('expMarkOut')?.addEventListener('click', markOutAndSave);
+    document.getElementById('expFrameBack')?.addEventListener('click', () => stepFrames(-1));
+    document.getElementById('expFrameForward')?.addEventListener('click', () => stepFrames(1));
 
     // Esc로 IN 지정 취소 — 설정창/확대 모드 닫기가 우선.
     document.addEventListener('keydown', (e) => {
@@ -3899,6 +4063,8 @@ function initControls() {
     });
     copyNotesButton.addEventListener('click', copyNotes);
     exportTxtButton.addEventListener('click', exportTxt);
+    exportCsvButton.addEventListener('click', exportCsv);
+    exportEdlButton.addEventListener('click', exportEdl);
     exportJsonButton.addEventListener('click', exportJson);
     importJsonButton.addEventListener('click', () => importJsonInput.click());
     importJsonInput.addEventListener('change', event => {
@@ -3909,7 +4075,6 @@ function initControls() {
     });
     clearAllButton.addEventListener('click', clearAll);
     changeVideoButton.addEventListener('click', () => videoInput.click());
-    convertVideoButton.addEventListener('click', simulateConversion);
     tabButtons.forEach(button => {
         button.addEventListener('click', () => setActiveTab(button.dataset.tab));
     });
@@ -4144,6 +4309,16 @@ function initStoragePersistence() {
     });
 }
 
+// 서비스워커: 앱 셸을 캐시해 오프라인에서도 열리고, Android/데스크톱
+// Chrome에서 PWA 설치가 가능해진다. (file:// 로 열면 건너뜀)
+function initServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    if (!/^https?:$/.test(location.protocol)) return;
+    navigator.serviceWorker.register('./sw.js').catch(error => {
+        console.warn('[sw] 등록 실패:', error);
+    });
+}
+
 const STORAGE_PANEL_RATIO_TOP = 'timeline_panel_ratio_top';
 const STORAGE_PANEL_RATIO_BOTTOM = 'timeline_panel_ratio_bottom';
 const STORAGE_PANEL_RATIO_VERT = 'timeline_panel_ratio_vert';
@@ -4161,9 +4336,12 @@ initPlaybackKeyboardShortcuts();
 initHistoryKeyboardShortcuts();
 initMarkControls();
 initInlineTimelineScrub();
+initColorSwatches();
+renderTagChips();
 initResizers();
 initPremiereTimelineKeyboard();
 initStoragePersistence();
+initServiceWorker();
 loadRecentFileInfo();
 
 // 프리미어 테마 전용: 트랙 타임라인 줌 단축키(+/-/0).
