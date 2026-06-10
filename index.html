@@ -37,8 +37,8 @@
             } catch (e) { /* localStorage 접근 불가 시 기본 테마로 */ }
         })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260610-2">
-    <script defer src="app.js?v=20260610-2"></script>
+    <link rel="stylesheet" href="styles.css?v=20260610-3">
+    <script defer src="app.js?v=20260610-3"></script>
 </head>
 <body>
     <button class="settings-button" id="settingsButton" aria-label="설정">
@@ -207,11 +207,15 @@
                         <div class="shortcut-keys"><kbd>Enter</kbd></div>
                         <span>제목·시간·태그 입력 중 메모 저장 (메모칸은 Ctrl+Enter)</span>
                     </div>
+                    <div class="shortcut-row">
+                        <div class="shortcut-keys"><kbd>↑</kbd><kbd>↓</kbd></div>
+                        <span>시간 입력칸에서 1프레임 미세조정 (Shift와 함께 5프레임)</span>
+                    </div>
                 </div>
                 <h4 class="shortcut-group-title">재생 / 이동</h4>
                 <div class="shortcut-list" aria-label="재생 이동 단축키 목록">
                     <div class="shortcut-row">
-                        <div class="shortcut-keys"><kbd>Space</kbd></div>
+                        <div class="shortcut-keys"><kbd>Space</kbd><kbd>K</kbd></div>
                         <span>재생 / 일시정지</span>
                     </div>
                     <div class="shortcut-row">
@@ -341,9 +345,9 @@
             <div class="panel video-panel" id="playerPanel">
                 <div id="uploadCard" class="video-upload">
                     <strong>로컬 영상 불러오기</strong>
-                    <p>mp4, mov 등 브라우저에서 지원하는 파일이면 바로 재생됩니다.</p>
+                    <p>mp4, mov 등 브라우저에서 지원하는 파일이면 바로 재생됩니다. 파일을 화면에 끌어다 놓아도 열립니다.</p>
                     <input type="file" id="videoInput" accept="video/*">
-                    <p class="upload-hint">불러온 뒤 — Space 재생 · I/O로 IN·OUT 마킹 · M 빠른 메모 · ← → 프레임 이동</p>
+                    <p class="upload-hint">불러온 뒤 — Space/K 재생 · I/O로 IN·OUT 마킹 · M 빠른 메모 · ← → 프레임 이동</p>
                 </div>
 
                 <div id="fileInfoCard" class="file-info">
@@ -544,5 +548,12 @@
     </main>
 
     <section id="premiereBottomZone" class="premiere-bottom-zone" hidden></section>
+
+    <div id="dropOverlay" class="drop-overlay" aria-hidden="true">
+        <div class="drop-overlay-box">
+            <strong>파일을 놓아 불러오기</strong>
+            <p>영상 파일은 바로 재생되고, JSON 백업은 타임라인으로 불러옵니다.</p>
+        </div>
+    </div>
 </body>
 </html>

@@ -1425,11 +1425,21 @@ function getTimelineHistorySnapshot() {
     };
 }
 
+// 실행취소/다시실행 버튼의 활성 상태를 스택과 동기화 —
+// 누를 수 있는지 화면에서 바로 알 수 있게 한다.
+function syncHistoryUi() {
+    const undoBtn = document.getElementById('undoAction');
+    if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+    const redoBtn = document.getElementById('redoAction');
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
+}
+
 function pushTimelineHistorySnapshot(snapshot) {
     if (isRestoringTimelineHistory || !snapshot) return;
     undoStack.push(snapshot);
     if (undoStack.length > TIMELINE_HISTORY_LIMIT) undoStack.shift();
     redoStack = [];
+    syncHistoryUi();
 }
 
 function recordTimelineHistory() {
@@ -1439,6 +1449,7 @@ function recordTimelineHistory() {
 function resetTimelineHistory() {
     undoStack = [];
     redoStack = [];
+    syncHistoryUi();
 }
 
 function restoreTimelineHistory(snapshot, message) {
@@ -1463,6 +1474,7 @@ function undoTimelineAction() {
     }
     redoStack.push(getTimelineHistorySnapshot());
     restoreTimelineHistory(undoStack.pop(), '작업 되돌림');
+    syncHistoryUi();
 }
 
 function redoTimelineAction() {
@@ -1472,6 +1484,7 @@ function redoTimelineAction() {
     }
     undoStack.push(getTimelineHistorySnapshot());
     restoreTimelineHistory(redoStack.pop(), '작업 다시 적용');
+    syncHistoryUi();
 }
 
 let renderSegmentsToken = 0;
@@ -1500,11 +1513,18 @@ function createSegmentCard(segment) {
     titleText.textContent = segment.title || '제목 없음';
     titleWrap.append(dot, titleText);
 
-    const timeText = document.createElement('span');
+    // 타임코드를 탭하면 재생하지 않고 시작 지점으로만 이동 — 위치 확인용.
+    const timeText = document.createElement('button');
+    timeText.type = 'button';
     timeText.className = 'segment-time';
+    timeText.title = '이 시작 지점으로 이동';
     const durationText = formatDurationShort(segment.end - segment.start);
     timeText.textContent = `${formatTime(segment.start)} ~ ${formatTime(segment.end)}`
         + (durationText ? ` · ${durationText}` : '');
+    timeText.addEventListener('click', () => {
+        if (!video.src || !Number.isFinite(segment.start)) return;
+        seekVideoTo(segment.start);
+    });
 
     header.append(titleWrap, timeText);
 
@@ -3750,8 +3770,9 @@ function initPlaybackKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
         if (shouldIgnorePlaybackShortcut(e)) return;
 
-        if (e.code === 'Space') {
+        if (e.code === 'Space' || e.code === 'KeyK') {
             // 버튼에 포커스가 있어도 스크롤/버튼 작동 대신 재생 토글 (편집 툴 관행)
+            // K는 J/K/L 편집 표준 — J(-10초)/L(+10초)과 함께 홈 포지션에서 제어.
             e.preventDefault();
             if (e.repeat || !video.src) return;
             if (video.paused) video.play().catch(() => {});
@@ -4036,6 +4057,7 @@ function initMarkControls() {
     // 키보드가 없는 iPad에서도 실행취소/다시실행을 쓸 수 있는 버튼.
     document.getElementById('undoAction')?.addEventListener('click', undoTimelineAction);
     document.getElementById('redoAction')?.addEventListener('click', redoTimelineAction);
+    syncHistoryUi();
 
     // 확대(전체화면) 모드 플로팅 마킹 바 — iPad에서 키보드 없이도
     // 전체화면으로 보면서 IN/OUT과 프레임 이동을 바로 쓸 수 있다.
@@ -4145,6 +4167,159 @@ function initInlineTimelineScrub() {
     });
 }
 
+// 영상 파일 로드 — 파일 선택 input과 드래그앤드롭이 같은 흐름을 공유한다.
+async function loadVideoFile(file) {
+    if (!file) return;
+
+    // 기존 영상과 다른 영상을 선택한 경우, 세그먼트 초기화 확인
+    const isDifferentFile = selectedFileName && selectedFileName !== file.name;
+    if (isDifferentFile && segments.length > 0) {
+        if (!confirm(`다른 영상을 선택하셨습니다. "${selectedFileName}"의 타임라인을 저장하고 "${file.name}"의 타임라인을 불러올까요?`)) {
+            return;
+        }
+        flushPendingLocalStorageSave();
+    }
+
+    // 새 영상 기준으로 IN 마킹 초기화
+    clearPendingIn({ silent: true });
+
+    resetFrameRateForFile(file);
+    const topLevelBoxesPromise = looksLikeMp4(file)
+        ? walkTopLevelBoxes(file).catch(error => {
+            console.warn('[mp4] failed to read top-level boxes:', error);
+            return null;
+        })
+        : Promise.resolve(null);
+
+    updateFileInfo(file);
+
+    // 해당 파일의 타임라인은 영상 URL 생성 성공 여부와 분리해서 먼저 등록한다.
+    const loaded = loadFromLocalStorage(file.name);
+    if (!loaded) {
+        segments = [];
+        totalDuration = 0;
+        renderAll();
+        resetTimelineHistory();
+    }
+
+    // iOS에서 큰 파일이거나 MP4의 moov atom이 끝에 있을 가능성이 있다면 미리 경고
+    // (faststart 자동 적용이 꺼진 경우에만 경고만 출력)
+    if (isIOS() && !getAutoFaststart() && /\.mp4$|\.m4v$|\.mov$/i.test(file.name)) {
+        const probe = await probeMp4Faststart(file);
+        const sizeGb = file.size / (1024 * 1024 * 1024);
+        const reasons = [];
+        if (sizeGb > 4) reasons.push(`${sizeGb.toFixed(1)}GB 파일`);
+        if (!probe.faststart) reasons.push('moov atom이 파일 앞쪽에 없음');
+        if (reasons.length > 0) {
+            setVideoLoadingStatus('ios-warning', reasons.join(', ') + '.');
+        }
+    }
+
+    // 다음 비디오 에러 발생 시 원본으로 fallback 가능하도록 파일 보관
+    currentLoadedFile = file;
+
+    try {
+        // faststart 적용된 URL 또는 원본 URL을 받음
+        const { url, faststart, status, frameRateInfo } = await getVideoBlobUrl(file, topLevelBoxesPromise);
+        currentLoadedFaststartActive = faststart;
+        if (currentVideoUrl) {
+            URL.revokeObjectURL(currentVideoUrl);
+        }
+        currentVideoUrl = url;
+        video.src = url;
+        video.load();
+        if (faststart) {
+            setVideoLoadingStatus('faststart-applied');
+        } else if (status === 'ios-faststart-skipped') {
+            // video.load()의 loadstart가 큰 파일 일반 경고로 덮어쓸 수 있어
+            // iPad 전용 안내를 다시 표시한다.
+            setVideoLoadingStatus('ios-faststart-skipped', formatFileSize(file.size));
+        }
+        if (frameRateInfo) {
+            frameRateDetectionToken += 1;
+            applyDetectedVideoFrameRate(frameRateInfo, { updateForm: true });
+            saveToLocalStorage();
+        } else if (faststart) {
+            frameRateDetectionToken += 1;
+            applyDetectedVideoFrameRate(null, { updateForm: true });
+        } else {
+            startFrameRateDetection(file, topLevelBoxesPromise);
+        }
+
+        if (!shouldDeferAutoPlay(file)) {
+            const playPromise = video.play();
+            if (playPromise && typeof playPromise.then === 'function') {
+                playPromise.catch(() => {
+                    // iOS/iPadOS에서는 사용자 제스처 후에도 재생이 막힐 수 있음 - 컨트롤로 직접 시작 가능
+                });
+            }
+        }
+    } catch (err) {
+        console.error('영상 URL 생성 실패:', err);
+        currentLoadedFaststartActive = false;
+        currentLoadedFile = null;
+        frameRateDetectionToken += 1;
+        applyDetectedVideoFrameRate(null, { updateForm: true });
+        setVideoLoadingStatus('error');
+    }
+}
+
+function looksLikeVideoFile(file) {
+    if (!file) return false;
+    if (/^video\//i.test(file.type || '')) return true;
+    return /\.(mp4|m4v|mov|webm|mkv|avi|ogv|ogg)$/i.test(file.name || '');
+}
+
+function looksLikeJsonBackup(file) {
+    if (!file) return false;
+    return /\.json$/i.test(file.name || '') || /json/i.test(file.type || '');
+}
+
+// 드래그앤드롭 — Finder(맥북)나 파일 앱(iPad)에서 영상·JSON 백업을
+// 화면 아무 곳에나 끌어다 놓으면 파일 선택 창 없이 바로 불러온다.
+function initDragAndDrop() {
+    const overlay = document.getElementById('dropOverlay');
+    if (!overlay) return;
+    // dragenter/leave는 자식 요소를 지날 때마다 발화하므로 깊이를 센다.
+    let dragDepth = 0;
+
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+
+    window.addEventListener('dragenter', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth += 1;
+        overlay.classList.add('is-active');
+    });
+    window.addEventListener('dragover', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    window.addEventListener('dragleave', (e) => {
+        if (!hasFiles(e)) return;
+        dragDepth = Math.max(0, dragDepth - 1);
+        if (dragDepth === 0) overlay.classList.remove('is-active');
+    });
+    window.addEventListener('drop', (e) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        dragDepth = 0;
+        overlay.classList.remove('is-active');
+        const files = Array.from(e.dataTransfer?.files || []);
+        if (files.length === 0) return;
+        const videoFile = files.find(looksLikeVideoFile);
+        const jsonFile = files.find(looksLikeJsonBackup);
+        if (videoFile) {
+            loadVideoFile(videoFile);
+        } else if (jsonFile) {
+            importJsonFile(jsonFile);
+        } else {
+            showMarkToast('지원하지 않는 파일 형식입니다', 'error');
+        }
+    });
+}
+
 function initControls() {
     document.querySelectorAll('[data-set-from-video]').forEach(button => {
         button.addEventListener('click', () => {
@@ -4190,6 +4365,20 @@ function initControls() {
         saveSegment();
     });
 
+    // 시간 입력칸에서 ↑/↓로 1프레임 미세조정 (Shift와 함께 5프레임).
+    // 타이핑 없이 편집점을 프레임 단위로 정밀하게 다듬는다.
+    [startTimeInput, endTimeInput].forEach(input => {
+        input.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+            e.preventDefault();
+            const parsed = parseTimeInput(input.value);
+            const base = Number.isFinite(parsed) ? parsed : (video.currentTime || 0);
+            const step = (e.shiftKey ? 5 : 1) / getTimecodeFps();
+            const next = Math.max(0, base + (e.key === 'ArrowUp' ? step : -step));
+            input.value = formatTime(next);
+        });
+    });
+
     // 현재 장면 메모 추가 버튼 — M 단축키(10초)와 같은 길이로 통일
     document.getElementById('quickAddMemo').addEventListener('click', () => {
         addQuickMemoFromCurrent(10, '현재 장면 메모 추가 완료');
@@ -4199,6 +4388,16 @@ function initControls() {
     searchInput.addEventListener('input', () => {
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => renderSegments(searchInput.value), 120);
+    });
+    // Esc 한 번으로 검색어를 비우고 전체 목록으로 복귀.
+    // 검색어가 없을 때는 그대로 버블링시켜 기존 Esc 동작(창 닫기 등)을 유지.
+    searchInput.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || !searchInput.value) return;
+        e.preventDefault();
+        e.stopPropagation();
+        searchInput.value = '';
+        clearTimeout(searchDebounceTimer);
+        renderSegments('');
     });
     copyNotesButton.addEventListener('click', copyNotes);
     exportTxtButton.addEventListener('click', exportTxt);
@@ -4244,104 +4443,12 @@ function initControls() {
         button.addEventListener('click', () => setActiveTab(button.dataset.tab));
     });
 
-    videoInput.addEventListener('change', async event => {
+    videoInput.addEventListener('change', event => {
         const file = event.target.files?.[0];
+        // 같은 파일을 다시 선택해도 change가 발화하도록 즉시 초기화.
+        videoInput.value = '';
         if (!file) return;
-
-        // 기존 영상과 다른 영상을 선택한 경우, 세그먼트 초기화 확인
-        const isDifferentFile = selectedFileName && selectedFileName !== file.name;
-        if (isDifferentFile && segments.length > 0) {
-            if (!confirm(`다른 영상을 선택하셨습니다. "${selectedFileName}"의 타임라인을 저장하고 "${file.name}"의 타임라인을 불러올까요?`)) {
-                videoInput.value = '';
-                return;
-            }
-            flushPendingLocalStorageSave();
-        }
-
-        // 새 영상 기준으로 IN 마킹 초기화
-        clearPendingIn({ silent: true });
-
-        resetFrameRateForFile(file);
-        const topLevelBoxesPromise = looksLikeMp4(file)
-            ? walkTopLevelBoxes(file).catch(error => {
-                console.warn('[mp4] failed to read top-level boxes:', error);
-                return null;
-            })
-            : Promise.resolve(null);
-
-        updateFileInfo(file);
-
-        // 해당 파일의 타임라인은 영상 URL 생성 성공 여부와 분리해서 먼저 등록한다.
-        const loaded = loadFromLocalStorage(file.name);
-        if (!loaded) {
-            segments = [];
-            totalDuration = 0;
-            renderAll();
-            resetTimelineHistory();
-        }
-
-        // iOS에서 큰 파일이거나 MP4의 moov atom이 끝에 있을 가능성이 있다면 미리 경고
-        // (faststart 자동 적용이 꺼진 경우에만 경고만 출력)
-        if (isIOS() && !getAutoFaststart() && /\.mp4$|\.m4v$|\.mov$/i.test(file.name)) {
-            const probe = await probeMp4Faststart(file);
-            const sizeGb = file.size / (1024 * 1024 * 1024);
-            const reasons = [];
-            if (sizeGb > 4) reasons.push(`${sizeGb.toFixed(1)}GB 파일`);
-            if (!probe.faststart) reasons.push('moov atom이 파일 앞쪽에 없음');
-            if (reasons.length > 0) {
-                setVideoLoadingStatus('ios-warning', reasons.join(', ') + '.');
-            }
-        }
-
-        // 다음 비디오 에러 발생 시 원본으로 fallback 가능하도록 파일 보관
-        currentLoadedFile = file;
-
-        try {
-            // faststart 적용된 URL 또는 원본 URL을 받음
-            const { url, faststart, status, frameRateInfo } = await getVideoBlobUrl(file, topLevelBoxesPromise);
-            currentLoadedFaststartActive = faststart;
-            if (currentVideoUrl) {
-                URL.revokeObjectURL(currentVideoUrl);
-            }
-            currentVideoUrl = url;
-            video.src = url;
-            video.load();
-            if (faststart) {
-                setVideoLoadingStatus('faststart-applied');
-            } else if (status === 'ios-faststart-skipped') {
-                // video.load()의 loadstart가 큰 파일 일반 경고로 덮어쓸 수 있어
-                // iPad 전용 안내를 다시 표시한다.
-                setVideoLoadingStatus('ios-faststart-skipped', formatFileSize(file.size));
-            }
-            if (frameRateInfo) {
-                frameRateDetectionToken += 1;
-                applyDetectedVideoFrameRate(frameRateInfo, { updateForm: true });
-                saveToLocalStorage();
-            } else if (faststart) {
-                frameRateDetectionToken += 1;
-                applyDetectedVideoFrameRate(null, { updateForm: true });
-            } else {
-                startFrameRateDetection(file, topLevelBoxesPromise);
-            }
-
-            if (!shouldDeferAutoPlay(file)) {
-                const playPromise = video.play();
-                if (playPromise && typeof playPromise.then === 'function') {
-                    playPromise.catch(() => {
-                        // iOS/iPadOS에서는 사용자 제스처 후에도 재생이 막힐 수 있음 - 컨트롤로 직접 시작 가능
-                    });
-                }
-            }
-        } catch (err) {
-            console.error('영상 URL 생성 실패:', err);
-            currentLoadedFaststartActive = false;
-            currentLoadedFile = null;
-            frameRateDetectionToken += 1;
-            applyDetectedVideoFrameRate(null, { updateForm: true });
-            setVideoLoadingStatus('error');
-        } finally {
-            videoInput.value = '';
-        }
+        loadVideoFile(file);
     });
 
     setActiveTab('editor');
@@ -4514,6 +4621,7 @@ initPlaybackKeyboardShortcuts();
 initHistoryKeyboardShortcuts();
 initMarkControls();
 initInlineTimelineScrub();
+initDragAndDrop();
 initColorSwatches();
 renderTagChips();
 initResizers();

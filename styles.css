@@ -785,6 +785,15 @@ button:active {
     transform: translateY(1px);
 }
 
+button:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+button:disabled:active {
+    transform: none;
+}
+
 label {
     font-weight: 600;
     color: var(--text);
@@ -1124,6 +1133,22 @@ textarea {
     font-size: 0.95rem;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+/* 타임코드는 버튼 — 탭하면 시작 지점으로 이동. 텍스트처럼 보이도록 리셋하되
+   패딩+음수 마진으로 레이아웃 변화 없이 탭 영역만 넓힌다. */
+button.segment-time {
+    background: none;
+    border: 1px solid transparent;
+    padding: 6px 8px;
+    margin: -6px -8px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+button.segment-time:hover,
+button.segment-time:focus-visible {
+    background: var(--accent-soft);
 }
 
 .segment-note {
@@ -4285,10 +4310,66 @@ button.tag:focus-visible {
     font-size: 16px; /* iOS 자동 줌 방지 */
 }
 
+/* 터치 환경에서는 타임코드 버튼의 탭 영역을 44px 가깝게 확보 */
+[data-env="touch"] button.segment-time {
+    padding: 12px 10px;
+    margin: -12px -10px;
+}
+
 /* 배속 버튼 — 터치 테마에서 크기 보정 */
 [data-design="pencil"] .custom-controls-speed,
 [data-design="ipad"] .custom-controls-speed {
     min-width: 64px;
     min-height: 44px;
     font-size: 1rem;
+}
+
+/* ─── 드래그앤드롭 오버레이 ───
+   Finder(맥북)·파일 앱(iPad)에서 파일을 끌어오는 동안 표시.
+   pointer-events 없음 — drop 이벤트는 window가 받는다. */
+.drop-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.drop-overlay.is-active {
+    opacity: 1;
+}
+
+.drop-overlay-box {
+    background: var(--panel);
+    border: 2px dashed var(--accent);
+    border-radius: 20px;
+    padding: 28px 44px;
+    text-align: center;
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.3);
+    transform: scale(0.96);
+    transition: transform 0.15s ease;
+}
+
+.drop-overlay.is-active .drop-overlay-box {
+    transform: scale(1);
+}
+
+.drop-overlay-box strong {
+    display: block;
+    font-size: 1.15rem;
+    color: var(--accent);
+    margin-bottom: 6px;
+}
+
+.drop-overlay-box p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-subtle);
 }
