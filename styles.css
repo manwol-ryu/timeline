@@ -151,6 +151,13 @@ body {
     justify-content: center;
 }
 
+/* 터치 테마는 메모칸이 남은 높이를 채우므로 가운데 정렬이 필요 없고,
+   내용이 패널보다 길어질 때 center 정렬이 상단을 잘라내는 것을 막는다 */
+[data-design="pencil"] #editorPanel.is-active,
+[data-design="ipad"] #editorPanel.is-active {
+    justify-content: flex-start;
+}
+
 #timelinePanel.is-active {
     justify-content: flex-start;
 }
@@ -320,8 +327,30 @@ body {
 /* 인터랙티브 자식만 visible 시 이벤트 캐치 — 빈 영역은 통과시켜
    gesture-zone에서 토글 처리 가능 */
 .custom-controls-bar.is-visible .custom-controls-btn,
-.custom-controls-bar.is-visible .custom-controls-scrubber {
+.custom-controls-bar.is-visible .custom-controls-scrubber,
+.custom-controls-bar.is-visible .custom-controls-speed {
     pointer-events: auto;
+}
+
+/* 배속 버튼 — 키보드 없는 iPad에서도 탭 한 번으로 배속 전환 */
+.custom-controls-speed {
+    min-width: 52px;
+    min-height: 32px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.custom-controls-speed:hover {
+    background: rgba(0, 0, 0, 0.8);
 }
 
 .custom-controls-btn {
@@ -909,6 +938,15 @@ textarea {
     align-items: stretch;
     justify-content: space-between;
     gap: 8px;
+    /* 버튼이 패널 폭을 넘으면 잘리는 대신 다음 줄로 흐른다 (iPad 가로 등) */
+    flex-wrap: wrap;
+}
+
+/* 실행취소/다시실행 — 화살표 글리프가 작게 그려지지 않도록 키운다 */
+#undoAction,
+#redoAction {
+    font-size: 1.25rem;
+    line-height: 1;
 }
 
 .mark-bar-group {
@@ -1237,8 +1275,8 @@ textarea {
 }
 
 .close-button {
-    width: 20px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
     background: var(--danger);
     border: none;
@@ -1249,23 +1287,19 @@ textarea {
     transition: all 0.2s ease;
     position: relative;
     flex-shrink: 0;
+    padding: 0;
 }
 
 .close-button:hover {
-    transform: scale(1.2);
+    transform: scale(1.1);
 }
 
+/* X 아이콘은 항상 표시 — 호버가 없는 터치 기기에서도 닫기 버튼임을 알 수 있게 */
 .close-button svg {
     position: absolute;
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     fill: white;
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.close-button:hover svg {
-    opacity: 1;
 }
 
 .settings-section {
@@ -1522,7 +1556,9 @@ textarea {
 
 [data-design="ipad"] body {
     padding: 8px clamp(8px, 1.5vw, 18px);
+    /* iPad Safari 주소창/탭바를 반영하는 dvh 우선, 구형 브라우저는 vh 폴백 */
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     font-size: 15px;
 }
@@ -1532,6 +1568,7 @@ textarea {
     max-width: 100%;
     width: 100%;
     height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     align-items: stretch;
     gap: 12px;
@@ -1624,7 +1661,9 @@ textarea {
 @media (max-width: 1180px) {
     [data-design="ipad"] body {
         height: 100vh;
+        height: 100dvh;
         min-height: 100vh;
+        min-height: 100dvh;
         overflow: hidden;
         padding: 8px clamp(8px, 1.5vw, 18px);
     }
@@ -1632,6 +1671,7 @@ textarea {
     [data-design="ipad"] .app-shell {
         margin: 0 auto;
         height: calc(100vh - 16px);
+        height: calc(100dvh - 16px);
         grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
         grid-auto-rows: auto;
         max-width: 100%;
@@ -2512,6 +2552,7 @@ textarea {
 [data-design="premiere"] #timelinePanel > div:first-child,
 [data-design="premiere"] #timelinePanel .search-row,
 [data-design="premiere"] #timelinePanel .segments-list,
+[data-design="premiere"] #timelinePanel #segmentsSummary,
 [data-design="premiere"] #timelinePanel #segmentsEmpty {
     display: none !important;
 }
@@ -3373,7 +3414,9 @@ body.is-resizing .panel-resizer {
 
 [data-design="pencil"] body {
     padding: 10px clamp(10px, 1.6vw, 22px);
+    /* iPad Safari 주소창/탭바를 반영하는 dvh 우선, 구형 브라우저는 vh 폴백 */
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
     font-size: 16px;
     line-height: 1.55;
@@ -3384,6 +3427,7 @@ body.is-resizing .panel-resizer {
     max-width: 100%;
     width: 100%;
     height: calc(100vh - 20px);
+    height: calc(100dvh - 20px);
     grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
     align-items: stretch;
     gap: clamp(14px, 1.6vw, 26px);
@@ -3696,7 +3740,9 @@ body.is-resizing .panel-resizer {
 @media (max-width: 1180px) {
     [data-design="pencil"] body {
         height: 100vh;
+        height: 100dvh;
         min-height: 100vh;
+        min-height: 100dvh;
         overflow: hidden;
         padding: 10px clamp(10px, 1.6vw, 22px);
     }
@@ -3704,6 +3750,7 @@ body.is-resizing .panel-resizer {
     [data-design="pencil"] .app-shell {
         margin: 0 auto;
         height: calc(100vh - 20px);
+        height: calc(100dvh - 20px);
         grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
         grid-auto-rows: auto;
         max-width: 100%;
@@ -3984,11 +4031,17 @@ button.tag-chip:active {
 }
 
 /* 위치 지정 4버튼은 짧은 라벨(현재→시작 등)로 한 줄 배치 */
-[data-design="premiere"] .video-info .quick-buttons,
-[data-design="pencil"] .video-info .quick-buttons {
+[data-design="premiere"] .video-info .quick-buttons {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
+}
+
+/* 펜슬 테마는 글자가 커서 4열이면 라벨이 잘린다 — 2×2 큰 터치 타깃으로 */
+[data-design="pencil"] .video-info .quick-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
 }
 
 [data-design="premiere"] .video-info .quick-buttons button {
@@ -4002,9 +4055,12 @@ button.tag-chip:active {
 }
 
 [data-design="pencil"] .video-info .quick-buttons button {
-    padding-left: 8px;
-    padding-right: 8px;
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 0.92rem;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* 메모칸은 남는 높이를 흡수하되, 라벨+최소 textarea 아래로는 줄어들지 않는다
@@ -4116,4 +4172,123 @@ button.tag-chip:active {
 
 [data-design="pencil"] .form-grid {
     gap: 12px;
+}
+
+/* ============================================================
+ * 2026-06 개선: 작업 환경 분리 설정 · 내보내기 드롭다운 · 요약 줄
+ * ============================================================ */
+
+/* ─── 내보내기 드롭다운 — 형식 버튼 5개를 한 버튼으로 정리 ─── */
+.export-menu {
+    position: relative;
+    display: inline-flex;
+}
+
+.export-menu-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 30;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 220px;
+    padding: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+}
+
+.export-menu-panel[hidden] {
+    display: none;
+}
+
+.export-menu-panel button {
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+    white-space: nowrap;
+}
+
+.export-menu-toggle[aria-expanded="true"] {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent-strong);
+}
+
+/* ─── 메모 요약 줄 — 기록 개수와 구간 합계를 한눈에 ─── */
+.segments-summary {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-subtle);
+    font-variant-numeric: tabular-nums;
+    padding: 0 4px;
+}
+
+/* ─── 설정: 작업 환경 "지금 적용 중" 배지 ─── */
+.env-active-badge[hidden] {
+    display: none;
+}
+
+.env-active-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* ─── 태그 버튼 — 탭하면 같은 태그만 필터 (버튼 기본값 리셋) ─── */
+button.tag {
+    border: 1px solid transparent;
+    cursor: pointer;
+    min-height: 0;
+    padding: 4px 10px;
+    align-self: flex-start;
+    font-family: inherit;
+}
+
+button.tag:hover,
+button.tag:focus-visible {
+    border-color: var(--accent);
+    text-decoration: underline;
+}
+
+/* ─── 업로드 카드의 시작 힌트 ─── */
+.upload-hint {
+    margin: 10px 0 0;
+    font-size: 0.8rem;
+    color: var(--text-subtle);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ─── 터치 환경 안전망 ───
+   실제 터치 기기는 테마/미디어쿼리가 이미 큰 타깃을 적용하지만,
+   "iPad 터치·펜슬로 고정"을 선택한 경우에도 최소 타깃을 보장한다. */
+[data-env="touch"] .mark-bar button,
+[data-env="touch"] .quick-buttons button,
+[data-env="touch"] .segment-actions button,
+[data-env="touch"] .search-row button,
+[data-env="touch"] .tab-button {
+    min-height: 44px;
+}
+
+[data-env="touch"] input[type="text"],
+[data-env="touch"] textarea {
+    font-size: 16px; /* iOS 자동 줌 방지 */
+}
+
+/* 배속 버튼 — 터치 테마에서 크기 보정 */
+[data-design="pencil"] .custom-controls-speed,
+[data-design="ipad"] .custom-controls-speed {
+    min-width: 64px;
+    min-height: 44px;
+    font-size: 1rem;
 }

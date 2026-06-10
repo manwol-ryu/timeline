@@ -12,8 +12,33 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260610-1">
-    <script defer src="app.js?v=20260610-1"></script>
+    <script>
+        // 첫 페인트 전에 저장된 테마·작업환경·디자인을 적용해 깜빡임(FOUC)을 막는다.
+        // 상세 로직은 app.js(applyEnvironment)가 다시 정확하게 적용한다.
+        (function () {
+            try {
+                var html = document.documentElement;
+                if (localStorage.getItem('timeline_dark_mode') === 'true') {
+                    html.setAttribute('data-theme', 'dark');
+                }
+                var mode = localStorage.getItem('timeline_env_mode');
+                var ua = navigator.userAgent || '';
+                var touchDevice = /iPad|iPhone|iPod/.test(ua)
+                    || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+                    || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches
+                        && navigator.maxTouchPoints > 1);
+                var env = (mode === 'desktop' || mode === 'touch') ? mode : (touchDevice ? 'touch' : 'desktop');
+                html.setAttribute('data-env', env);
+                var valid = ['default', 'ipad', 'pencil', 'premiere'];
+                var design = localStorage.getItem('timeline_design_' + env)
+                    || localStorage.getItem('timeline_design');
+                if (valid.indexOf(design) < 0) design = env === 'touch' ? 'pencil' : 'default';
+                if (design !== 'default') html.setAttribute('data-design', design);
+            } catch (e) { /* localStorage 접근 불가 시 기본 테마로 */ }
+        })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260610-2">
+    <script defer src="app.js?v=20260610-2"></script>
 </head>
 <body>
     <button class="settings-button" id="settingsButton" aria-label="설정">
@@ -35,6 +60,7 @@
 
             <div class="settings-tabs" role="tablist" aria-label="설정 탭">
                 <button class="settings-tab-button is-active" type="button" role="tab" aria-selected="true" data-settings-tab="general">일반</button>
+                <button class="settings-tab-button" type="button" role="tab" aria-selected="false" data-settings-tab="env">작업 환경</button>
                 <button class="settings-tab-button" type="button" role="tab" aria-selected="false" data-settings-tab="shortcuts">단축키</button>
             </div>
 
@@ -69,15 +95,6 @@
                     </label>
                 </div>
                 <div class="setting-row">
-                    <label for="designSelect">디자인</label>
-                    <select id="designSelect" class="select-input">
-                        <option value="default">기본 (반응형)</option>
-                        <option value="ipad">iPad 최적화 (4:3)</option>
-                        <option value="pencil">iPad 터치·펜슬 (작업 최적화)</option>
-                        <option value="premiere">프리미어 프로</option>
-                    </select>
-                </div>
-                <div class="setting-row">
                     <label for="clearTitleToggle">메모 추가 시 구간제목 삭제</label>
                     <label class="toggle-switch">
                         <input type="checkbox" id="clearTitleToggle">
@@ -100,12 +117,65 @@
                 </div>
             </div>
 
-            <div class="settings-section settings-general-section">
-                <h3>플레이어 설정</h3>
-                <p>전체화면 버튼 동작 방식을 선택합니다. 시스템 전체화면은 OS의 풀스크린을 사용하지만, iPad/iPhone에서는 더블탭·길게 누르기 등 커스텀 제스처가 비활성화됩니다.</p>
+            <div class="settings-section settings-env-section" hidden>
+                <h3>작업 환경</h3>
+                <p>컴퓨터(마우스·키보드) 작업과 iPad(터치·애플펜슬) 작업의 설정을 따로 저장합니다. 기기를 자동으로 감지해 맞는 설정을 적용하므로, 보통은 자동 감지를 그대로 두면 됩니다.</p>
+                <div class="cache-info">
+                    <div class="cache-info-row">
+                        <span class="cache-info-label">이 기기 감지 결과</span>
+                        <span class="cache-info-value" id="envDetected">데스크톱</span>
+                    </div>
+                    <div class="cache-info-row">
+                        <span class="cache-info-label">적용 중인 환경</span>
+                        <span class="cache-info-value" id="envActive">데스크톱</span>
+                    </div>
+                </div>
                 <div class="setting-row">
-                    <label for="fullscreenModeSetting">전체화면 방식</label>
-                    <select id="fullscreenModeSetting" class="select-input">
+                    <label for="envModeSelect">환경 선택</label>
+                    <select id="envModeSelect" class="select-input">
+                        <option value="auto">자동 감지 (권장)</option>
+                        <option value="desktop">데스크톱으로 고정</option>
+                        <option value="touch">iPad 터치·펜슬로 고정</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-section settings-env-section" hidden>
+                <h3>🖥 데스크톱 환경 <span class="env-active-badge" id="envBadgeDesktop" hidden>지금 적용 중</span></h3>
+                <p>마우스·키보드로 작업할 때 적용되는 설정입니다.</p>
+                <div class="setting-row">
+                    <label for="designSelectDesktop">디자인</label>
+                    <select id="designSelectDesktop" class="select-input">
+                        <option value="default">기본 (반응형)</option>
+                        <option value="premiere">프리미어 프로</option>
+                        <option value="ipad">iPad 최적화 (4:3)</option>
+                        <option value="pencil">iPad 터치·펜슬 (작업 최적화)</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="fullscreenModeDesktop">전체화면 방식</label>
+                    <select id="fullscreenModeDesktop" class="select-input">
+                        <option value="expand">CSS 확대 (제스처 유지)</option>
+                        <option value="native">시스템 전체화면 (OS 풀스크린)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-section settings-env-section" hidden>
+                <h3>✍️ iPad 터치·펜슬 환경 <span class="env-active-badge" id="envBadgeTouch" hidden>지금 적용 중</span></h3>
+                <p>손가락·애플펜슬로 작업할 때 적용되는 설정입니다. 터치 타깃이 커지고 컨트롤을 잡기 쉬워집니다. 시스템 전체화면은 iPad에서 더블탭·길게 누르기 제스처가 비활성화되므로 CSS 확대를 권장합니다.</p>
+                <div class="setting-row">
+                    <label for="designSelectTouch">디자인</label>
+                    <select id="designSelectTouch" class="select-input">
+                        <option value="pencil">iPad 터치·펜슬 (작업 최적화, 권장)</option>
+                        <option value="ipad">iPad 최적화 (4:3)</option>
+                        <option value="premiere">프리미어 프로</option>
+                        <option value="default">기본 (반응형)</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <label for="fullscreenModeTouch">전체화면 방식</label>
+                    <select id="fullscreenModeTouch" class="select-input">
                         <option value="expand">CSS 확대 (제스처 유지, 권장)</option>
                         <option value="native">시스템 전체화면 (OS 풀스크린)</option>
                     </select>
@@ -261,7 +331,7 @@
 
             <div class="settings-section settings-general-section">
                 <h3>정보</h3>
-                <p>영상 타임라인 메모 도구 v1.1<br>브라우저의 localStorage를 사용하여 데이터를 저장합니다. 기록한 편집점은 TXT·CSV·EDL·JSON으로 내보낼 수 있고, EDL은 프리미어 프로 / 다빈치 리졸브에서 바로 불러올 수 있습니다.</p>
+                <p>영상 타임라인 메모 도구 v1.2<br>브라우저의 localStorage를 사용하여 데이터를 저장합니다. 기록한 편집점은 TXT·CSV·EDL·JSON으로 내보낼 수 있고, EDL은 프리미어 프로 / 다빈치 리졸브에서 바로 불러올 수 있습니다. 디자인과 전체화면 방식은 데스크톱 / iPad 터치·펜슬 작업 환경별로 따로 저장됩니다.</p>
             </div>
         </div>
     </div>
@@ -273,6 +343,7 @@
                     <strong>로컬 영상 불러오기</strong>
                     <p>mp4, mov 등 브라우저에서 지원하는 파일이면 바로 재생됩니다.</p>
                     <input type="file" id="videoInput" accept="video/*">
+                    <p class="upload-hint">불러온 뒤 — Space 재생 · I/O로 IN·OUT 마킹 · M 빠른 메모 · ← → 프레임 이동</p>
                 </div>
 
                 <div id="fileInfoCard" class="file-info">
@@ -321,6 +392,7 @@
                         <span id="customCurrentTime" class="custom-controls-time">00:00:00:00</span>
                         <input type="range" id="customScrubber" class="custom-controls-scrubber" min="0" max="0" step="0.01" value="0" aria-label="재생 위치">
                         <span id="customTotalTime" class="custom-controls-time">--:--:--:--</span>
+                        <button id="customSpeedBtn" class="custom-controls-speed" type="button" aria-label="재생 속도 변경" title="재생 속도 (탭할 때마다 1× → 1.25× → 1.5× → 2×)">1x</button>
                     </div>
                     <div id="expandedMarkBar" class="expanded-mark-bar" aria-label="전체화면 편집점 마킹">
                         <button class="expanded-mark-btn" id="expFrameBack" type="button" title="1프레임 뒤로 (←)">−1f</button>
@@ -357,6 +429,10 @@
                     <div class="mark-bar-group" aria-label="메모 사이 이동">
                         <button class="ghost mark-step-btn" id="prevMemo" type="button" title="이전 메모로 (↑)">◀◀</button>
                         <button class="ghost mark-step-btn" id="nextMemo" type="button" title="다음 메모로 (↓)">▶▶</button>
+                    </div>
+                    <div class="mark-bar-group" aria-label="실행취소 / 다시실행">
+                        <button class="ghost mark-step-btn" id="undoAction" type="button" title="실행취소 (Ctrl+Z)" aria-label="실행취소">↺</button>
+                        <button class="ghost mark-step-btn" id="redoAction" type="button" title="다시실행 (Ctrl+Shift+Z)" aria-label="다시실행">↻</button>
                     </div>
                 </div>
 
@@ -442,16 +518,22 @@
 
                     <div class="search-row">
                         <input type="text" id="searchInput" placeholder="메모, 제목, 태그 검색">
-                        <button class="ghost" id="copyNotes">메모 복사</button>
-                        <button class="ghost" id="exportTxt">TXT 저장</button>
-                        <button class="ghost" id="exportCsv">CSV 저장</button>
-                        <button class="ghost" id="exportEdl">EDL 저장</button>
-                        <button class="ghost" id="exportJson">JSON 저장</button>
+                        <div class="export-menu">
+                            <button class="ghost export-menu-toggle" id="exportMenuToggle" type="button" aria-haspopup="true" aria-expanded="false">내보내기 ▾</button>
+                            <div class="export-menu-panel" id="exportMenuPanel" hidden>
+                                <button class="ghost" id="copyNotes">📋 메모 복사</button>
+                                <button class="ghost" id="exportTxt">TXT 저장</button>
+                                <button class="ghost" id="exportCsv">CSV 저장 (엑셀)</button>
+                                <button class="ghost" id="exportEdl">EDL 저장 (프리미어·리졸브)</button>
+                                <button class="ghost" id="exportJson">JSON 저장 (백업)</button>
+                            </div>
+                        </div>
                         <button class="ghost" id="importJson">JSON 불러오기</button>
                         <button class="ghost" id="clearAll">전체 삭제</button>
                         <input type="file" id="importJsonInput" accept="application/json" style="display:none;">
                     </div>
 
+                    <div id="segmentsSummary" class="segments-summary" hidden></div>
                     <div id="segmentsList" class="segments-list"></div>
                     <div id="segmentsEmpty" class="empty-state" style="display:none;">
                         아직 등록된 메모가 없습니다. 영상을 재생하면서 중요한 순간을 기록해보세요.
