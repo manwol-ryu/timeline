@@ -806,7 +806,7 @@ textarea {
 
 .form-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 100px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 12px;
     align-items: end;
 }
@@ -818,16 +818,6 @@ textarea {
 .form-grid input[type="color"] {
     width: 100px;
     height: 42px;
-}
-
-@media (max-width: 520px) {
-    .form-grid {
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-
-    .form-grid > div:nth-child(3) {
-        grid-column: 1 / -1;
-    }
 }
 
 .timeline-bar {
@@ -3511,7 +3501,7 @@ body.is-resizing .panel-resizer {
 }
 
 [data-design="pencil"] .form-grid {
-    grid-template-columns: 1fr 1fr 120px;
+    grid-template-columns: 1fr 1fr;
     gap: 14px;
 }
 
@@ -3950,4 +3940,180 @@ button.tag-chip:active {
     min-height: 42px;
     padding: 8px 16px;
     font-size: 0.95rem;
+}
+
+/* ============================================================
+ * Notes(메모 입력) 패널 — iPad에서 스크롤 없이 한 화면에 들어가게
+ * ============================================================ */
+
+/* 저장 버튼 줄은 패널 스크롤과 무관하게 항상 하단에 보이게 고정 */
+#editorPanel > .quick-buttons {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: var(--panel);
+    padding-top: 10px;
+    padding-bottom: 2px;
+}
+
+/* ─── 프리미어: 폼 세로 밀도를 줄여 iPad 높이(834px)에 스크롤 없이 맞춘다 ─── */
+[data-design="premiere"] .workspace-panel {
+    padding: 8px 10px;
+    gap: 7px;
+}
+
+[data-design="premiere"] #editorPanel input[type="text"],
+[data-design="premiere"] #editorPanel textarea {
+    padding: 8px 10px;
+}
+
+[data-design="premiere"] .video-info {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    padding: 8px 10px;
+}
+
+/* 배지 자체가 현재/전체임을 보여주므로 중복 라벨은 숨겨 한 줄 절약 */
+[data-design="premiere"] .video-info .video-time-label {
+    display: none;
+}
+
+[data-design="premiere"] .time-badge {
+    padding: 5px 10px;
+    font-size: 0.82rem;
+}
+
+/* 위치 지정 4버튼은 짧은 라벨(현재→시작 등)로 한 줄 배치 */
+[data-design="premiere"] .video-info .quick-buttons,
+[data-design="pencil"] .video-info .quick-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+[data-design="premiere"] .video-info .quick-buttons button {
+    width: 100%;
+    font-size: 11px;
+    padding-left: 6px;
+    padding-right: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+[data-design="pencil"] .video-info .quick-buttons button {
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+}
+
+/* 메모칸은 남는 높이를 흡수하되, 라벨+최소 textarea 아래로는 줄어들지 않는다
+   (공간이 모자라면 패널이 스크롤되고 sticky 저장 줄이 안전망) */
+[data-design="premiere"] .memo-field,
+[data-design="pencil"] .memo-field {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+[data-design="premiere"] .memo-field textarea {
+    flex: 1 1 auto;
+    min-height: 56px;
+}
+
+[data-design="pencil"] .memo-field textarea {
+    flex: 1 1 auto;
+    min-height: 80px;
+}
+
+[data-design="premiere"] #editorPanel > .quick-buttons {
+    margin-top: auto;
+}
+
+/* 프리미어: 떠 있는 기어 버튼이 Notes 패널 우상단 버튼을 가리던 문제 —
+   하단 상태 바의 오른쪽 끝으로 옮겨 콘텐츠와 겹치지 않게 한다 */
+[data-design="premiere"] .settings-button {
+    top: auto;
+    bottom: 0;
+    right: 0;
+    width: 48px;
+    height: 22px;
+    border-radius: 0;
+    border: none;
+    border-left: 1px solid var(--border-strong);
+    background: transparent;
+    box-shadow: none;
+}
+
+[data-design="premiere"] .settings-button:hover {
+    transform: none;
+    background: var(--accent);
+}
+
+[data-design="premiere"] .settings-button svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* 프리미어 Notes: 라벨이 좁은 패널에서 두 줄로 꺾여 높이를 잡아먹지 않게
+   작은 한 줄 라벨로 고정 (프리미어 본연의 작은 UI 텍스트 톤과도 일치) */
+[data-design="premiere"] #editorPanel label {
+    display: block;
+    max-width: 100%;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 스와치가 주 색상 선택 수단이므로 색상 입력칸은 낮게 — 세로 공간 확보 */
+[data-design="premiere"] .form-grid input[type="color"] {
+    width: 64px;
+    height: 30px;
+}
+
+[data-design="premiere"] #editorPanel > .quick-buttons {
+    padding-top: 6px;
+}
+
+[data-design="premiere"] #editorPanel > .quick-buttons button {
+    padding-top: 7px;
+    padding-bottom: 7px;
+}
+
+[data-design="pencil"] .video-info {
+    padding: 10px 14px;
+    gap: 10px;
+}
+
+[data-design="pencil"] .form-grid input[type="color"],
+[data-design="pencil"] input[type="color"] {
+    height: 44px;
+}
+
+[data-design="pencil"] .memo-field textarea {
+    min-height: 72px;
+}
+
+[data-design="pencil"] .workspace-panel {
+    gap: 12px;
+}
+
+[data-design="pencil"] input[type="text"],
+[data-design="pencil"] textarea {
+    padding: 12px 14px;
+}
+
+[data-design="pencil"] .memo-field textarea {
+    min-height: 68px;
+}
+
+[data-design="pencil"] #editorPanel > .quick-buttons {
+    padding-top: 6px;
+    padding-bottom: 0;
+}
+
+[data-design="pencil"] .form-grid {
+    gap: 12px;
 }

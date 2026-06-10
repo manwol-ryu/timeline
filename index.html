@@ -12,8 +12,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
-    <link rel="stylesheet" href="styles.css?v=20260609-5">
-    <script defer src="app.js?v=20260609-5"></script>
+    <link rel="stylesheet" href="styles.css?v=20260610-1">
+    <script defer src="app.js?v=20260610-1"></script>
 </head>
 <body>
     <button class="settings-button" id="settingsButton" aria-label="설정">
@@ -23,7 +23,7 @@
     </button>
 
     <div class="settings-modal" id="settingsModal">
-        <div class="settings-content">
+        <div class="settings-content" role="dialog" aria-modal="true" aria-label="설정">
             <div class="settings-header">
                 <h2>설정</h2>
                 <button class="close-button" id="closeSettings" aria-label="닫기">
@@ -391,8 +391,8 @@
                             <span id="timeBadge" class="time-badge">00:00:00:00 / --:--:--:--</span>
                         </div>
                         <div class="quick-buttons" aria-label="빠른 위치 지정">
-                            <button class="ghost" data-set-from-video="start">현재 위치를 시작에</button>
-                            <button class="ghost" data-set-from-video="end">현재 위치를 종료에</button>
+                            <button class="ghost" data-set-from-video="start" title="현재 재생 위치를 시작 시간에 입력">현재→시작</button>
+                            <button class="ghost" data-set-from-video="end" title="현재 재생 위치를 종료 시간에 입력">현재→종료</button>
                             <button class="ghost" id="jumpBack">-5초</button>
                             <button class="ghost" id="jumpForward">+5초</button>
                         </div>
@@ -407,7 +407,7 @@
                             <label for="endTime">종료 (HH:MM:SS:FF 혹은 초)</label>
                             <input type="text" id="endTime" placeholder="00:00:00:00">
                         </div>
-                        <div>
+                        <div class="full-width color-field">
                             <label for="segmentColor">표시 색상</label>
                             <div class="color-row">
                                 <input type="color" id="segmentColor" value="#3b82f6">
@@ -421,7 +421,7 @@
                         </div>
                     </div>
 
-                    <div>
+                    <div class="memo-field">
                         <label for="segmentNote">메모</label>
                         <textarea id="segmentNote" placeholder="이 구간에서 체크할 특징, 편집 아이디어 등을 적어보세요."></textarea>
                     </div>
