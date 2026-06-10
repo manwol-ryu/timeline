@@ -74,6 +74,10 @@ const STORAGE_PWA_HINT = 'timeline_pwa_hint';
 const STORAGE_DESIGN = 'timeline_design';
 const DESIGN_DEFAULT = 'default';
 const VALID_DESIGNS = ['default', 'ipad', 'pencil', 'premiere'];
+const STORAGE_ENV_MODE = 'timeline_env_mode';
+const ENV_DESKTOP = 'desktop';
+const ENV_TOUCH = 'touch';
+const ENV_MODES = ['auto', ENV_DESKTOP, ENV_TOUCH];
 const STORAGE_FASTSTART_AUTO = 'timeline_faststart_auto';
 const DEFAULT_TIMECODE_FPS = 30;
 const INVALID_TIMECODE = '--:--:--:--';
@@ -195,14 +199,59 @@ function restoreFrameRateFromStorage(data) {
     invalidateTimecodeCaches();
 }
 
-function getDesign() {
-    const stored = localStorage.getItem(STORAGE_DESIGN);
-    return VALID_DESIGNS.includes(stored) ? stored : DESIGN_DEFAULT;
+// ===== 작업 환경(데스크톱 / iPad 터치·펜슬) 프로필 =====
+// 키보드·마우스 작업과 터치·펜슬 작업은 최적 UI가 달라, 디자인과
+// 전체화면 방식을 환경별로 따로 저장하고 기기에 맞는 쪽을 적용한다.
+
+function detectDeviceEnvironment() {
+    if (isIOS()) return ENV_TOUCH;
+    const coarse = typeof window.matchMedia === 'function'
+        && window.matchMedia('(pointer: coarse)').matches;
+    return coarse && (navigator.maxTouchPoints || 0) > 1 ? ENV_TOUCH : ENV_DESKTOP;
 }
 
-function setDesign(design) {
+function getEnvMode() {
+    const stored = localStorage.getItem(STORAGE_ENV_MODE);
+    return ENV_MODES.includes(stored) ? stored : 'auto';
+}
+
+function setEnvMode(mode) {
+    if (!ENV_MODES.includes(mode)) return;
+    localStorage.setItem(STORAGE_ENV_MODE, mode);
+    applyEnvironment();
+}
+
+function getActiveEnvironment() {
+    const mode = getEnvMode();
+    return mode === 'auto' ? detectDeviceEnvironment() : mode;
+}
+
+function envLabel(env) {
+    return env === ENV_TOUCH ? 'iPad 터치·펜슬' : '데스크톱';
+}
+
+function applyEnvironment() {
+    document.documentElement.setAttribute('data-env', getActiveEnvironment());
+    applyDesign();
+}
+
+function getDesignForEnv(env) {
+    const stored = localStorage.getItem(`${STORAGE_DESIGN}_${env}`);
+    if (VALID_DESIGNS.includes(stored)) return stored;
+    // 환경별 설정 도입 전의 단일 설정값을 이어받는다.
+    const legacy = localStorage.getItem(STORAGE_DESIGN);
+    if (VALID_DESIGNS.includes(legacy)) return legacy;
+    return env === ENV_TOUCH ? 'pencil' : DESIGN_DEFAULT;
+}
+
+function getDesign() {
+    return getDesignForEnv(getActiveEnvironment());
+}
+
+function setDesignForEnv(env, design) {
     if (!VALID_DESIGNS.includes(design)) return;
-    localStorage.setItem(STORAGE_DESIGN, design);
+    localStorage.setItem(`${STORAGE_DESIGN}_${env}`, design);
+    if (env !== getActiveEnvironment()) return;
     if (design === 'premiere') {
         toggleDarkMode(true);
         const darkToggle = document.getElementById('darkModeToggle');
@@ -1101,14 +1150,21 @@ function hideVideoLoadingProgress() {
     videoLoadingProgressIndeterminate = false;
 }
 
-function getFullscreenMode() {
-    const stored = localStorage.getItem(STORAGE_FULLSCREEN_MODE);
-    return stored === 'native' ? 'native' : FULLSCREEN_MODE_DEFAULT;
+function getFullscreenModeForEnv(env) {
+    const stored = localStorage.getItem(`${STORAGE_FULLSCREEN_MODE}_${env}`);
+    if (stored === 'native' || stored === 'expand') return stored;
+    // 환경별 설정 도입 전의 단일 설정값을 이어받는다.
+    const legacy = localStorage.getItem(STORAGE_FULLSCREEN_MODE);
+    return legacy === 'native' ? 'native' : FULLSCREEN_MODE_DEFAULT;
 }
 
-function setFullscreenMode(mode) {
+function getFullscreenMode() {
+    return getFullscreenModeForEnv(getActiveEnvironment());
+}
+
+function setFullscreenModeForEnv(env, mode) {
     if (mode !== 'native' && mode !== 'expand') return;
-    localStorage.setItem(STORAGE_FULLSCREEN_MODE, mode);
+    localStorage.setItem(`${STORAGE_FULLSCREEN_MODE}_${env}`, mode);
 }
 
 function formatTime(seconds) {
@@ -1138,7 +1194,9 @@ function playSegmentRange(segment) {
     segmentPreviewEnd = Number.isFinite(segment.end) && segment.end > segment.start
         ? segment.end
         : null;
-    segmentPreviewSeekGuard = true;
+    // 이미 시작점에 있어 seeking이 발생하지 않으면 가드가 남아
+    // 다음 사용자 시킹을 한 번 삼키므로, 실제로 이동할 때만 켠다.
+    segmentPreviewSeekGuard = Math.abs((video.currentTime || 0) - segment.start) > 0.01;
     try { video.currentTime = segment.start; } catch (_) {}
     video.play().catch(() => {});
 }
@@ -1457,9 +1515,17 @@ function createSegmentCard(segment) {
     card.append(header, note);
 
     if (segment.tag) {
-        const tag = document.createElement('span');
+        // 태그를 탭하면 같은 태그의 메모만 모아 본다.
+        const tag = document.createElement('button');
+        tag.type = 'button';
         tag.className = 'tag';
         tag.textContent = `#${segment.tag}`;
+        tag.title = '이 태그로 필터링';
+        tag.addEventListener('click', () => {
+            const keyword = searchInput.value.trim() === segment.tag ? '' : segment.tag;
+            searchInput.value = keyword;
+            renderSegments(keyword);
+        });
         card.appendChild(tag);
     }
 
@@ -1493,6 +1559,26 @@ function createSegmentCard(segment) {
     return card;
 }
 
+// 타임라인 패널 상단 요약 — 몇 개를 기록했고 구간 합계가 얼마인지 한눈에.
+function updateSegmentsSummary(filteredCount) {
+    const summary = document.getElementById('segmentsSummary');
+    if (!summary) return;
+    if (segments.length === 0) {
+        summary.hidden = true;
+        return;
+    }
+    const totalSeconds = segments.reduce((sum, segment) => {
+        const span = (segment.end || 0) - (segment.start || 0);
+        return sum + (Number.isFinite(span) && span > 0 ? span : 0);
+    }, 0);
+    const parts = [`메모 ${segments.length}개`];
+    if (filteredCount !== segments.length) parts.push(`검색 결과 ${filteredCount}개`);
+    const durationText = formatDurationShort(totalSeconds);
+    if (durationText) parts.push(`구간 합계 ${durationText}`);
+    summary.textContent = parts.join(' · ');
+    summary.hidden = false;
+}
+
 function renderSegments(filterText = '') {
     const token = ++renderSegmentsToken;
     segmentsList.textContent = '';
@@ -1500,6 +1586,8 @@ function renderSegments(filterText = '') {
     const filtered = !keyword
         ? segments.slice()
         : segments.filter(segment => (segment._searchIndex || '').includes(keyword));
+
+    updateSegmentsSummary(filtered.length);
 
     if (filtered.length === 0) {
         segmentsEmpty.style.display = 'block';
@@ -2119,16 +2207,24 @@ function updateCacheInfo() {
     });
 }
 
+let settingsReturnFocusEl = null;
+
 function openSettings() {
     const modal = document.getElementById('settingsModal');
+    settingsReturnFocusEl = document.activeElement;
     modal.classList.add('is-open');
     updateCacheInfo();
     loadDefaultSettings();
+    document.getElementById('closeSettings')?.focus();
 }
 
 function closeSettings() {
     const modal = document.getElementById('settingsModal');
     modal.classList.remove('is-open');
+    if (settingsReturnFocusEl && typeof settingsReturnFocusEl.focus === 'function') {
+        settingsReturnFocusEl.focus();
+    }
+    settingsReturnFocusEl = null;
 }
 
 function clearCurrentCache() {
@@ -2181,22 +2277,43 @@ function loadDefaultSettings() {
     document.getElementById('clearTitleToggle').checked = clearTitle;
     document.getElementById('clearTagToggle').checked = clearTag;
 
-    const fullscreenSelect = document.getElementById('fullscreenModeSetting');
-    if (fullscreenSelect) {
-        fullscreenSelect.value = getFullscreenMode();
-    }
-
-    const designSelect = document.getElementById('designSelect');
-    if (designSelect) {
-        designSelect.value = getDesign();
-    }
-
     const faststartToggle = document.getElementById('faststartToggle');
     if (faststartToggle) {
         faststartToggle.checked = getAutoFaststart();
     }
 
+    syncEnvironmentSettingsUi();
     syncPwaUi();
+}
+
+function syncEnvironmentSettingsUi() {
+    const modeSelect = document.getElementById('envModeSelect');
+    if (!modeSelect) return;
+    const detected = detectDeviceEnvironment();
+    const active = getActiveEnvironment();
+    const mode = getEnvMode();
+    modeSelect.value = mode;
+
+    const detectedEl = document.getElementById('envDetected');
+    if (detectedEl) detectedEl.textContent = envLabel(detected);
+    const activeEl = document.getElementById('envActive');
+    if (activeEl) {
+        activeEl.textContent = `${envLabel(active)} ${mode === 'auto' ? '(자동 감지)' : '(직접 선택)'}`;
+    }
+
+    const desktopDesign = document.getElementById('designSelectDesktop');
+    if (desktopDesign) desktopDesign.value = getDesignForEnv(ENV_DESKTOP);
+    const touchDesign = document.getElementById('designSelectTouch');
+    if (touchDesign) touchDesign.value = getDesignForEnv(ENV_TOUCH);
+    const desktopFs = document.getElementById('fullscreenModeDesktop');
+    if (desktopFs) desktopFs.value = getFullscreenModeForEnv(ENV_DESKTOP);
+    const touchFs = document.getElementById('fullscreenModeTouch');
+    if (touchFs) touchFs.value = getFullscreenModeForEnv(ENV_TOUCH);
+
+    const desktopBadge = document.getElementById('envBadgeDesktop');
+    if (desktopBadge) desktopBadge.hidden = active !== ENV_DESKTOP;
+    const touchBadge = document.getElementById('envBadgeTouch');
+    if (touchBadge) touchBadge.hidden = active !== ENV_TOUCH;
 }
 
 function syncPwaUi() {
@@ -3212,6 +3329,25 @@ function initCustomControls() {
         scheduleAutoHide();
     });
 
+    // 배속 버튼 — 키보드가 없는 iPad에서도 탭 한 번으로 배속을 바꾼다.
+    const speedBtn = document.getElementById('customSpeedBtn');
+    if (speedBtn) {
+        const SPEED_PRESETS = [1, 1.25, 1.5, 2];
+        const syncSpeedLabel = () => {
+            speedBtn.textContent = formatPlaybackRate(video.playbackRate || 1);
+        };
+        speedBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!video.src) return;
+            const current = video.playbackRate || 1;
+            const next = SPEED_PRESETS.find(rate => rate > current + 0.001) ?? SPEED_PRESETS[0];
+            playbackSpeed.setRate(next);
+            scheduleAutoHide();
+        });
+        video.addEventListener('ratechange', syncSpeedLabel);
+        syncSpeedLabel();
+    }
+
     scrubber.addEventListener('pointerdown', () => {
         isScrubbing = true;
         clearHideTimer();
@@ -3897,6 +4033,9 @@ function initMarkControls() {
     document.getElementById('frameForward')?.addEventListener('click', () => stepFrames(1));
     document.getElementById('prevMemo')?.addEventListener('click', () => jumpToAdjacentMemo(-1));
     document.getElementById('nextMemo')?.addEventListener('click', () => jumpToAdjacentMemo(1));
+    // 키보드가 없는 iPad에서도 실행취소/다시실행을 쓸 수 있는 버튼.
+    document.getElementById('undoAction')?.addEventListener('click', undoTimelineAction);
+    document.getElementById('redoAction')?.addEventListener('click', redoTimelineAction);
 
     // 확대(전체화면) 모드 플로팅 마킹 바 — iPad에서 키보드 없이도
     // 전체화면으로 보면서 IN/OUT과 프레임 이동을 바로 쓸 수 있다.
@@ -4066,6 +4205,32 @@ function initControls() {
     exportCsvButton.addEventListener('click', exportCsv);
     exportEdlButton.addEventListener('click', exportEdl);
     exportJsonButton.addEventListener('click', exportJson);
+
+    // 내보내기 드롭다운 — 형식 버튼 5개를 한 버튼으로 모아 툴바를 정리.
+    const exportMenuToggle = document.getElementById('exportMenuToggle');
+    const exportMenuPanel = document.getElementById('exportMenuPanel');
+    if (exportMenuToggle && exportMenuPanel) {
+        const closeExportMenu = () => {
+            exportMenuPanel.hidden = true;
+            exportMenuToggle.setAttribute('aria-expanded', 'false');
+        };
+        exportMenuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const willOpen = exportMenuPanel.hidden;
+            exportMenuPanel.hidden = !willOpen;
+            exportMenuToggle.setAttribute('aria-expanded', String(willOpen));
+        });
+        // 형식을 고르면 실행 후 바로 닫힌다.
+        exportMenuPanel.addEventListener('click', (e) => {
+            if (e.target.closest('button')) closeExportMenu();
+        });
+        document.addEventListener('click', (e) => {
+            if (!exportMenuPanel.hidden && !e.target.closest('.export-menu')) closeExportMenu();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !exportMenuPanel.hidden) closeExportMenu();
+        });
+    }
     importJsonButton.addEventListener('click', () => importJsonInput.click());
     importJsonInput.addEventListener('change', event => {
         const file = event.target.files?.[0];
@@ -4193,23 +4358,17 @@ function initSettings() {
     const darkModeToggle = document.getElementById('darkModeToggle');
     const clearTitleToggle = document.getElementById('clearTitleToggle');
     const clearTagToggle = document.getElementById('clearTagToggle');
-    const fullscreenModeSelect = document.getElementById('fullscreenModeSetting');
     const settingsTabButtons = document.querySelectorAll('[data-settings-tab]');
-    const generalSections = document.querySelectorAll('.settings-general-section');
-    const shortcutSections = document.querySelectorAll('.settings-shortcuts-section');
+    const settingsSections = settingsModal.querySelectorAll('.settings-section');
 
     function setSettingsTab(tabName) {
-        const showShortcuts = tabName === 'shortcuts';
         settingsTabButtons.forEach(button => {
             const active = button.dataset.settingsTab === tabName;
             button.classList.toggle('is-active', active);
             button.setAttribute('aria-selected', String(active));
         });
-        generalSections.forEach(section => {
-            section.hidden = showShortcuts;
-        });
-        shortcutSections.forEach(section => {
-            section.hidden = !showShortcuts;
+        settingsSections.forEach(section => {
+            section.hidden = !section.classList.contains(`settings-${tabName}-section`);
         });
     }
 
@@ -4237,23 +4396,42 @@ function initSettings() {
     darkModeToggle.addEventListener('change', (e) => toggleDarkMode(e.target.checked));
     clearTitleToggle.addEventListener('change', (e) => toggleClearTitle(e.target.checked));
     clearTagToggle.addEventListener('change', (e) => toggleClearTag(e.target.checked));
-    if (fullscreenModeSelect) {
-        fullscreenModeSelect.addEventListener('change', (e) => {
-            setFullscreenMode(e.target.value);
-            showFormStatus('전체화면 방식 저장됨');
-        });
-    }
     settingsTabButtons.forEach(button => {
         button.addEventListener('click', () => setSettingsTab(button.dataset.settingsTab));
     });
 
-    const designSelect = document.getElementById('designSelect');
-    if (designSelect) {
-        designSelect.addEventListener('change', (e) => {
-            setDesign(e.target.value);
-            showFormStatus('디자인 변경됨');
+    // 작업 환경(데스크톱/터치) — 환경 선택 + 환경별 디자인·전체화면 방식
+    const envModeSelect = document.getElementById('envModeSelect');
+    if (envModeSelect) {
+        envModeSelect.addEventListener('change', (e) => {
+            setEnvMode(e.target.value);
+            syncEnvironmentSettingsUi();
+            showFormStatus('작업 환경 변경됨');
         });
     }
+    [
+        { id: 'designSelectDesktop', env: ENV_DESKTOP },
+        { id: 'designSelectTouch', env: ENV_TOUCH },
+    ].forEach(({ id, env }) => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        select.addEventListener('change', (e) => {
+            setDesignForEnv(env, e.target.value);
+            syncEnvironmentSettingsUi();
+            showFormStatus(`${envLabel(env)} 디자인 저장됨`);
+        });
+    });
+    [
+        { id: 'fullscreenModeDesktop', env: ENV_DESKTOP },
+        { id: 'fullscreenModeTouch', env: ENV_TOUCH },
+    ].forEach(({ id, env }) => {
+        const select = document.getElementById(id);
+        if (!select) return;
+        select.addEventListener('change', (e) => {
+            setFullscreenModeForEnv(env, e.target.value);
+            showFormStatus(`${envLabel(env)} 전체화면 방식 저장됨`);
+        });
+    });
 
     const faststartToggle = document.getElementById('faststartToggle');
     if (faststartToggle) {
@@ -4323,7 +4501,7 @@ const STORAGE_PANEL_RATIO_TOP = 'timeline_panel_ratio_top';
 const STORAGE_PANEL_RATIO_BOTTOM = 'timeline_panel_ratio_bottom';
 const STORAGE_PANEL_RATIO_VERT = 'timeline_panel_ratio_vert';
 
-applyDesign();
+applyEnvironment();
 setVideoAspect();
 resetForm();
 initVideoEvents();
