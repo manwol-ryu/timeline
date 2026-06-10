@@ -4051,9 +4051,9 @@ function initControls() {
         saveSegment();
     });
 
-    // 현재 장면 메모 추가 버튼
+    // 현재 장면 메모 추가 버튼 — M 단축키(10초)와 같은 길이로 통일
     document.getElementById('quickAddMemo').addEventListener('click', () => {
-        addQuickMemoFromCurrent(5, '현재 장면 메모 추가 완료');
+        addQuickMemoFromCurrent(10, '현재 장면 메모 추가 완료');
     });
 
     let searchDebounceTimer = null;
