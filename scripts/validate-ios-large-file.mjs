@@ -37,12 +37,16 @@ assert(remuxIndex !== -1, 'getVideoBlobUrl still calls makeFaststartBlobUrl for 
 assert(skipIndex !== -1 && remuxIndex !== -1 && skipIndex < remuxIndex, 'iOS large-file skip happens before in-browser remux');
 assert(getVideoBlobUrl.includes("status: 'ios-faststart-skipped'"), 'skip path returns status to preserve actionable message');
 
-const changeHandler = sourceBetween(app, "videoInput.addEventListener('change', async event =>", '    });\n\n    setActiveTab');
-assert(changeHandler.includes('try {'), 'video input change handler wraps video URL setup in try/catch/finally');
-assert(changeHandler.includes('catch (err)'), 'video input change handler catches URL setup failures');
-assert(changeHandler.includes("videoInput.value = ''"), 'video input is reset so the same large file can be selected again after a failure');
-assert(changeHandler.includes("status === 'ios-faststart-skipped'"), 'change handler reapplies skipped status after video.load() so loadstart does not overwrite it');
-assert(changeHandler.includes('!shouldDeferAutoPlay(file)'), 'change handler skips automatic play() for iOS large files');
+// 파일 선택과 드래그앤드롭이 공유하는 loadVideoFile이 안전 장치를 유지하는지 확인.
+const loadVideoFile = sourceBetween(app, 'async function loadVideoFile(file)', 'function looksLikeVideoFile(');
+assert(loadVideoFile.includes('try {'), 'loadVideoFile wraps video URL setup in try/catch');
+assert(loadVideoFile.includes('catch (err)'), 'loadVideoFile catches URL setup failures');
+assert(loadVideoFile.includes("status === 'ios-faststart-skipped'"), 'loadVideoFile reapplies skipped status after video.load() so loadstart does not overwrite it');
+assert(loadVideoFile.includes('!shouldDeferAutoPlay(file)'), 'loadVideoFile skips automatic play() for iOS large files');
+
+const changeHandler = sourceBetween(app, "videoInput.addEventListener('change'", '    });\n\n    setActiveTab');
+assert(changeHandler.includes("videoInput.value = ''"), 'video input is reset so the same file can be selected again');
+assert(changeHandler.includes('loadVideoFile(file)'), 'video input change handler delegates to shared loadVideoFile flow');
 
 if (!process.exitCode) {
   console.log('PASS: iOS large-file registration safeguards are present');

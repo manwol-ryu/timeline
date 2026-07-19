@@ -1,5 +1,5 @@
 // 앱 셸 캐시 서비스워커 — index.html의 ?v= 버전과 함께 올린다.
-const CACHE_VERSION = '20260610-3';
+const CACHE_VERSION = '20260719-1';
 const CACHE_NAME = `timeline-app-${CACHE_VERSION}`;
 const PRECACHE_URLS = [
     './',

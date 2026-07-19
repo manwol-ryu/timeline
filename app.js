@@ -46,6 +46,62 @@ const jumpForwardButton = document.getElementById('jumpForward');
 const tabButtons = document.querySelectorAll('.tab-button');
 const workspacePanels = document.querySelectorAll('.workspace-panel');
 
+// ===== 안전한 저장소 접근 계층 =====
+// localStorage가 차단된 환경(사파리 프라이빗 모드, 브라우저 설정으로 저장소
+// 차단, 쿼터 초과)에서는 직접 접근이 예외를 던져 앱 전체가 멈출 수 있다.
+// 모든 접근을 감싸고, 사용할 수 없으면 세션 동안만 유지되는 메모리
+// 저장소로 대체해 앱은 계속 동작하게 한다.
+const storage = (() => {
+    const memory = new Map();
+    let backend = null;
+    try {
+        const probeKey = '__timeline_storage_probe__';
+        window.localStorage.setItem(probeKey, '1');
+        window.localStorage.removeItem(probeKey);
+        backend = window.localStorage;
+    } catch (_) {
+        backend = null;
+    }
+    return {
+        persistent: !!backend,
+        get(key) {
+            if (backend) {
+                try { return backend.getItem(key); } catch (_) { /* 메모리로 폴백 */ }
+            }
+            return memory.has(key) ? memory.get(key) : null;
+        },
+        // 성공적으로 디스크에 남았을 때만 true. 메모리 폴백은 false.
+        set(key, value) {
+            memory.set(key, String(value));
+            if (!backend) return false;
+            try {
+                backend.setItem(key, String(value));
+                return true;
+            } catch (_) {
+                return false;
+            }
+        },
+        remove(key) {
+            memory.delete(key);
+            if (!backend) return;
+            try { backend.removeItem(key); } catch (_) {}
+        },
+        keys() {
+            if (backend) {
+                try {
+                    const result = [];
+                    for (let i = 0; i < backend.length; i++) {
+                        const key = backend.key(i);
+                        if (key !== null) result.push(key);
+                    }
+                    return result;
+                } catch (_) { /* 메모리로 폴백 */ }
+            }
+            return Array.from(memory.keys());
+        },
+    };
+})();
+
 let segments = [];
 let editingId = null;
 let totalDuration = 0;
@@ -211,13 +267,13 @@ function detectDeviceEnvironment() {
 }
 
 function getEnvMode() {
-    const stored = localStorage.getItem(STORAGE_ENV_MODE);
+    const stored = storage.get(STORAGE_ENV_MODE);
     return ENV_MODES.includes(stored) ? stored : 'auto';
 }
 
 function setEnvMode(mode) {
     if (!ENV_MODES.includes(mode)) return;
-    localStorage.setItem(STORAGE_ENV_MODE, mode);
+    storage.set(STORAGE_ENV_MODE, mode);
     applyEnvironment();
 }
 
@@ -236,10 +292,10 @@ function applyEnvironment() {
 }
 
 function getDesignForEnv(env) {
-    const stored = localStorage.getItem(`${STORAGE_DESIGN}_${env}`);
+    const stored = storage.get(`${STORAGE_DESIGN}_${env}`);
     if (VALID_DESIGNS.includes(stored)) return stored;
     // 환경별 설정 도입 전의 단일 설정값을 이어받는다.
-    const legacy = localStorage.getItem(STORAGE_DESIGN);
+    const legacy = storage.get(STORAGE_DESIGN);
     if (VALID_DESIGNS.includes(legacy)) return legacy;
     return env === ENV_TOUCH ? 'pencil' : DESIGN_DEFAULT;
 }
@@ -250,7 +306,7 @@ function getDesign() {
 
 function setDesignForEnv(env, design) {
     if (!VALID_DESIGNS.includes(design)) return;
-    localStorage.setItem(`${STORAGE_DESIGN}_${env}`, design);
+    storage.set(`${STORAGE_DESIGN}_${env}`, design);
     if (env !== getActiveEnvironment()) return;
     if (design === 'premiere') {
         toggleDarkMode(true);
@@ -1080,12 +1136,12 @@ function attachClipDragHandlers(clip, seg) {
 }
 
 function isPwaHintEnabled() {
-    const stored = localStorage.getItem(STORAGE_PWA_HINT);
+    const stored = storage.get(STORAGE_PWA_HINT);
     return stored === null ? true : stored === 'true';
 }
 
 function setPwaHintEnabled(enabled) {
-    localStorage.setItem(STORAGE_PWA_HINT, enabled ? 'true' : 'false');
+    storage.set(STORAGE_PWA_HINT, enabled ? 'true' : 'false');
 }
 
 function isInStandalone() {
@@ -1151,10 +1207,10 @@ function hideVideoLoadingProgress() {
 }
 
 function getFullscreenModeForEnv(env) {
-    const stored = localStorage.getItem(`${STORAGE_FULLSCREEN_MODE}_${env}`);
+    const stored = storage.get(`${STORAGE_FULLSCREEN_MODE}_${env}`);
     if (stored === 'native' || stored === 'expand') return stored;
     // 환경별 설정 도입 전의 단일 설정값을 이어받는다.
-    const legacy = localStorage.getItem(STORAGE_FULLSCREEN_MODE);
+    const legacy = storage.get(STORAGE_FULLSCREEN_MODE);
     return legacy === 'native' ? 'native' : FULLSCREEN_MODE_DEFAULT;
 }
 
@@ -1164,7 +1220,7 @@ function getFullscreenMode() {
 
 function setFullscreenModeForEnv(env, mode) {
     if (mode !== 'native' && mode !== 'expand') return;
-    localStorage.setItem(`${STORAGE_FULLSCREEN_MODE}_${env}`, mode);
+    storage.set(`${STORAGE_FULLSCREEN_MODE}_${env}`, mode);
 }
 
 function formatTime(seconds) {
@@ -1345,7 +1401,7 @@ function renderTimelineBar(targetBar, emptyState) {
         marker.title = `${segment.title || '제목 없음'} (${formatTime(segment.start)}~${formatTime(segment.end)})`;
         marker.addEventListener('click', () => {
             video.currentTime = segment.start;
-            video.play();
+            video.play().catch(() => {});
         });
         fragment.appendChild(marker);
     });
@@ -1400,10 +1456,19 @@ function renderTimeline() {
 }
 
 
+// crypto.randomUUID는 보안 컨텍스트(HTTPS)가 아니거나 구형 사파리에서는
+// 존재하지 않아, 그대로 쓰면 메모 저장이 통째로 실패한다.
+function generateSegmentId() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        try { return crypto.randomUUID(); } catch (_) { /* 폴백 사용 */ }
+    }
+    return `seg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function normalizeSegment(segment) {
     const normalized = {
         ...segment,
-        id: segment.id || crypto.randomUUID(),
+        id: segment.id || generateSegmentId(),
         start: Number(segment.start),
         end: Number(segment.end),
         color: segment.color || DEFAULT_SEGMENT_COLOR,
@@ -1746,8 +1811,8 @@ function finishEditing() {
 }
 
 function resetForm() {
-    const shouldClearTitle = localStorage.getItem(STORAGE_CLEAR_TITLE) === 'true';
-    const shouldClearTag = localStorage.getItem(STORAGE_CLEAR_TAG) === 'true';
+    const shouldClearTitle = storage.get(STORAGE_CLEAR_TITLE) === 'true';
+    const shouldClearTag = storage.get(STORAGE_CLEAR_TAG) === 'true';
 
     if (shouldClearTitle) {
         segmentTitle.value = '';
@@ -1756,7 +1821,7 @@ function resetForm() {
         segmentTag.value = '';
     }
     segmentNote.value = '';
-    const defaultColor = localStorage.getItem(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
+    const defaultColor = storage.get(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
     segmentColor.value = defaultColor;
     syncColorSwatches();
     if (Number.isFinite(video.currentTime)) {
@@ -1769,10 +1834,13 @@ function resetForm() {
     }
 }
 
+let formStatusTimer = null;
 function showFormStatus(message) {
     formStatus.textContent = message;
     formStatus.style.display = 'inline';
-    setTimeout(() => {
+    // 이전 타이머가 남아 있으면 새 메시지가 일찍 사라지므로 항상 재설정.
+    clearTimeout(formStatusTimer);
+    formStatusTimer = setTimeout(() => {
         formStatus.style.display = 'none';
     }, 1600);
 }
@@ -1796,7 +1864,7 @@ function gatherFormData() {
     }
 
     return {
-        id: editingId ?? crypto.randomUUID(),
+        id: editingId ?? generateSegmentId(),
         title: segmentTitle.value.trim(),
         start,
         end,
@@ -1951,7 +2019,8 @@ function exportJson() {
         exportedAt: new Date().toISOString(),
         duration: totalDuration,
         videoName: selectedFileName,
-        segments,
+        // 내부 검색 인덱스(_searchIndex) 같은 파생 필드는 백업에서 제외.
+        segments: cloneTimelineSegments(),
     };
     downloadBlob(
         new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
@@ -1989,6 +2058,9 @@ function importJsonFile(file) {
             alert('JSON 파일을 불러오는 중 오류가 발생했습니다.');
         }
     };
+    reader.onerror = () => {
+        alert('JSON 파일을 읽지 못했습니다. 파일을 다시 선택해주세요.');
+    };
     reader.readAsText(file, 'utf-8');
 }
 
@@ -1998,7 +2070,7 @@ function clearAll() {
     recordTimelineHistory();
     segments = [];
     if (selectedFileName) {
-        localStorage.removeItem(STORAGE_KEY_PREFIX + selectedFileName);
+        storage.remove(STORAGE_KEY_PREFIX + selectedFileName);
     }
     finishEditing();
     renderAll();
@@ -2028,14 +2100,21 @@ function buildLocalStorageSavePayload() {
     };
 }
 
+// 브라우저 저장에 실패해도(쿼터 초과·프라이빗 모드) 조용히 삼키지 않고
+// 한 번은 알려서 사용자가 JSON 내보내기로 백업할 수 있게 한다.
+let persistFailureNotified = false;
+function notifyPersistFailureOnce() {
+    if (persistFailureNotified) return;
+    persistFailureNotified = true;
+    console.warn('[storage] 브라우저 저장 실패 — 메모는 이 세션 동안만 유지됩니다.');
+    showMarkToast('브라우저 저장 실패 — JSON 내보내기로 백업을 권장합니다', 'error');
+}
+
 function commitLocalStorageSave(payload) {
     if (!payload) return;
-    try {
-        localStorage.setItem(payload.key, JSON.stringify(payload.data));
-        localStorage.setItem(STORAGE_RECENT_FILE, payload.recentFileName);
-    } catch (error) {
-        console.error('localStorage 저장 실패:', error);
-    }
+    const saved = storage.set(payload.key, JSON.stringify(payload.data));
+    storage.set(STORAGE_RECENT_FILE, payload.recentFileName);
+    if (!saved) notifyPersistFailureOnce();
 }
 
 function cancelPendingLocalStorageSave() {
@@ -2096,7 +2175,7 @@ function loadFromLocalStorage(fileName) {
     if (!fileName) return false;
 
     try {
-        const stored = localStorage.getItem(getStorageKey(fileName));
+        const stored = storage.get(getStorageKey(fileName));
         if (!stored) return false;
 
         const data = JSON.parse(stored);
@@ -2130,10 +2209,10 @@ function loadFromLocalStorage(fileName) {
 
 function loadRecentFileInfo() {
     try {
-        const recentFileName = localStorage.getItem(STORAGE_RECENT_FILE);
+        const recentFileName = storage.get(STORAGE_RECENT_FILE);
         if (!recentFileName) return;
 
-        const stored = localStorage.getItem(getStorageKey(recentFileName));
+        const stored = storage.get(getStorageKey(recentFileName));
         if (!stored) return;
 
         const data = JSON.parse(stored);
@@ -2157,22 +2236,20 @@ function loadRecentFileInfo() {
 
 function getAllCachedFiles() {
     const files = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(STORAGE_KEY_PREFIX)) {
-            try {
-                const data = JSON.parse(localStorage.getItem(key));
-                const fileName = key.replace(STORAGE_KEY_PREFIX, '');
-                files.push({
-                    fileName,
-                    segmentsCount: data.segments?.length || 0,
-                    savedAt: data.savedAt
-                });
-            } catch (error) {
-                console.error('파일 정보 파싱 실패:', key, error);
-            }
+    storage.keys().forEach(key => {
+        if (!key.startsWith(STORAGE_KEY_PREFIX)) return;
+        try {
+            const data = JSON.parse(storage.get(key));
+            const fileName = key.replace(STORAGE_KEY_PREFIX, '');
+            files.push({
+                fileName,
+                segmentsCount: data.segments?.length || 0,
+                savedAt: data.savedAt
+            });
+        } catch (error) {
+            console.error('파일 정보 파싱 실패:', key, error);
         }
-    }
+    });
     return files;
 }
 
@@ -2212,7 +2289,7 @@ function updateCacheInfo() {
         deleteBtn.addEventListener('click', () => {
             if (confirm(`"${file.fileName}"의 타임라인 데이터를 삭제할까요?`)) {
                 flushPendingLocalStorageSave();
-                localStorage.removeItem(STORAGE_KEY_PREFIX + file.fileName);
+                storage.remove(STORAGE_KEY_PREFIX + file.fileName);
                 if (selectedFileName === file.fileName) {
                     segments = [];
                     renderAll();
@@ -2254,7 +2331,7 @@ function clearCurrentCache() {
     }
     if (confirm(`"${selectedFileName}"의 타임라인 데이터를 삭제할까요?`)) {
         discardPendingLocalStorageSave();
-        localStorage.removeItem(STORAGE_KEY_PREFIX + selectedFileName);
+        storage.remove(STORAGE_KEY_PREFIX + selectedFileName);
         segments = [];
         selectedFileName = '';
         uploadCard.style.display = 'block';
@@ -2274,9 +2351,9 @@ function clearAllCache() {
     if (confirm(`전체 ${files.length}개 영상의 타임라인 데이터를 모두 삭제할까요?\n이 작업은 되돌릴 수 없습니다.`)) {
         discardPendingLocalStorageSave();
         files.forEach(file => {
-            localStorage.removeItem(STORAGE_KEY_PREFIX + file.fileName);
+            storage.remove(STORAGE_KEY_PREFIX + file.fileName);
         });
-        localStorage.removeItem(STORAGE_RECENT_FILE);
+        storage.remove(STORAGE_RECENT_FILE);
         segments = [];
         selectedFileName = '';
         uploadCard.style.display = 'block';
@@ -2288,12 +2365,12 @@ function clearAllCache() {
 }
 
 function loadDefaultSettings() {
-    const defaultColor = localStorage.getItem(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
+    const defaultColor = storage.get(STORAGE_DEFAULT_COLOR) || DEFAULT_SEGMENT_COLOR;
     document.getElementById('defaultColorSetting').value = defaultColor;
     segmentColor.value = defaultColor;
 
-    const clearTitle = localStorage.getItem(STORAGE_CLEAR_TITLE) === 'true';
-    const clearTag = localStorage.getItem(STORAGE_CLEAR_TAG) === 'true';
+    const clearTitle = storage.get(STORAGE_CLEAR_TITLE) === 'true';
+    const clearTag = storage.get(STORAGE_CLEAR_TAG) === 'true';
     document.getElementById('clearTitleToggle').checked = clearTitle;
     document.getElementById('clearTagToggle').checked = clearTag;
 
@@ -2356,22 +2433,22 @@ function syncPwaUi() {
 }
 
 function toggleClearTitle(enabled) {
-    localStorage.setItem(STORAGE_CLEAR_TITLE, enabled ? 'true' : 'false');
+    storage.set(STORAGE_CLEAR_TITLE, enabled ? 'true' : 'false');
 }
 
 function toggleClearTag(enabled) {
-    localStorage.setItem(STORAGE_CLEAR_TAG, enabled ? 'true' : 'false');
+    storage.set(STORAGE_CLEAR_TAG, enabled ? 'true' : 'false');
 }
 
 function saveDefaultColor(color) {
-    localStorage.setItem(STORAGE_DEFAULT_COLOR, color);
+    storage.set(STORAGE_DEFAULT_COLOR, color);
     segmentColor.value = color;
     syncColorSwatches();
     showFormStatus('기본 색상 저장 완료');
 }
 
 function resetDefaultColor() {
-    localStorage.removeItem(STORAGE_DEFAULT_COLOR);
+    storage.remove(STORAGE_DEFAULT_COLOR);
     document.getElementById('defaultColorSetting').value = DEFAULT_SEGMENT_COLOR;
     segmentColor.value = DEFAULT_SEGMENT_COLOR;
     syncColorSwatches();
@@ -2381,15 +2458,15 @@ function resetDefaultColor() {
 function toggleDarkMode(enabled) {
     if (enabled) {
         document.documentElement.setAttribute('data-theme', 'dark');
-        localStorage.setItem(STORAGE_DARK_MODE, 'true');
+        storage.set(STORAGE_DARK_MODE, 'true');
     } else {
         document.documentElement.removeAttribute('data-theme');
-        localStorage.setItem(STORAGE_DARK_MODE, 'false');
+        storage.set(STORAGE_DARK_MODE, 'false');
     }
 }
 
 function loadDarkMode() {
-    const darkMode = localStorage.getItem(STORAGE_DARK_MODE) === 'true';
+    const darkMode = storage.get(STORAGE_DARK_MODE) === 'true';
     document.getElementById('darkModeToggle').checked = darkMode;
     if (darkMode) {
         document.documentElement.setAttribute('data-theme', 'dark');
@@ -2403,12 +2480,12 @@ function loadDarkMode() {
 // =====================================================================
 
 function getAutoFaststart() {
-    const v = localStorage.getItem(STORAGE_FASTSTART_AUTO);
+    const v = storage.get(STORAGE_FASTSTART_AUTO);
     return v === null ? true : v === 'true';
 }
 
 function setAutoFaststart(enabled) {
-    localStorage.setItem(STORAGE_FASTSTART_AUTO, enabled ? 'true' : 'false');
+    storage.set(STORAGE_FASTSTART_AUTO, enabled ? 'true' : 'false');
 }
 
 function looksLikeMp4(file) {
@@ -3043,7 +3120,7 @@ function captureVideoThumbnail() {
 
 function isEditableTarget(target) {
     const tag = (target?.tagName || '').toLowerCase();
-    return tag === 'input' || tag === 'textarea' || target?.isContentEditable;
+    return tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
 }
 
 function isSettingsModalOpen() {
@@ -3900,7 +3977,7 @@ function addQuickMemoFromCurrent(durationSeconds, statusMessage, alertOnMissing 
     const endTime = currentTime + durationSeconds;
 
     const data = {
-        id: crypto.randomUUID(),
+        id: generateSegmentId(),
         title: segmentTitle.value.trim() || '제목 없음',
         start: currentTime,
         end: Math.min(endTime, totalDuration > 0 ? totalDuration : endTime),
@@ -4168,6 +4245,10 @@ function initInlineTimelineScrub() {
 }
 
 // 영상 파일 로드 — 파일 선택 input과 드래그앤드롭이 같은 흐름을 공유한다.
+// 큰 파일은 faststart 분석(await) 중에 다른 파일이 선택될 수 있어,
+// 로드 토큰으로 낡은 비동기 흐름이 새 로드를 덮어쓰지 못하게 막는다.
+let videoLoadToken = 0;
+
 async function loadVideoFile(file) {
     if (!file) return;
 
@@ -4179,6 +4260,8 @@ async function loadVideoFile(file) {
         }
         flushPendingLocalStorageSave();
     }
+
+    const loadToken = ++videoLoadToken;
 
     // 새 영상 기준으로 IN 마킹 초기화
     clearPendingIn({ silent: true });
@@ -4206,6 +4289,7 @@ async function loadVideoFile(file) {
     // (faststart 자동 적용이 꺼진 경우에만 경고만 출력)
     if (isIOS() && !getAutoFaststart() && /\.mp4$|\.m4v$|\.mov$/i.test(file.name)) {
         const probe = await probeMp4Faststart(file);
+        if (loadToken !== videoLoadToken) return;
         const sizeGb = file.size / (1024 * 1024 * 1024);
         const reasons = [];
         if (sizeGb > 4) reasons.push(`${sizeGb.toFixed(1)}GB 파일`);
@@ -4221,6 +4305,11 @@ async function loadVideoFile(file) {
     try {
         // faststart 적용된 URL 또는 원본 URL을 받음
         const { url, faststart, status, frameRateInfo } = await getVideoBlobUrl(file, topLevelBoxesPromise);
+        // 분석 중에 다른 파일이 선택되었다면 이 결과는 폐기 (URL 누수 방지).
+        if (loadToken !== videoLoadToken) {
+            URL.revokeObjectURL(url);
+            return;
+        }
         currentLoadedFaststartActive = faststart;
         if (currentVideoUrl) {
             URL.revokeObjectURL(currentVideoUrl);
@@ -4256,6 +4345,7 @@ async function loadVideoFile(file) {
         }
     } catch (err) {
         console.error('영상 URL 생성 실패:', err);
+        if (loadToken !== videoLoadToken) return;
         currentLoadedFaststartActive = false;
         currentLoadedFile = null;
         frameRateDetectionToken += 1;
@@ -4589,9 +4679,20 @@ function initSettings() {
 
 function initStoragePersistence() {
     window.addEventListener('beforeunload', flushPendingLocalStorageSave);
+    // iOS Safari는 beforeunload가 발화하지 않는 경우가 많아 pagehide로 보강.
+    window.addEventListener('pagehide', flushPendingLocalStorageSave);
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) flushPendingLocalStorageSave();
     });
+    // 저장소 압박 시 브라우저가 데이터를 임의로 비우지 않도록 영구 저장을 요청.
+    // (지원하지 않거나 거부돼도 동작에는 영향 없음)
+    if (navigator.storage && typeof navigator.storage.persist === 'function') {
+        navigator.storage.persist().catch(() => {});
+    }
+    // 저장소 자체가 차단된 환경이면 시작 시 한 번 알린다.
+    if (!storage.persistent) {
+        notifyPersistFailureOnce();
+    }
 }
 
 // 서비스워커: 앱 셸을 캐시해 오프라인에서도 열리고, Android/데스크톱
@@ -4707,18 +4808,18 @@ function initResizers() {
 }
 
 function applyStoredPanelRatios() {
-    const topRatio = parseFloat(localStorage.getItem(STORAGE_PANEL_RATIO_TOP));
+    const topRatio = parseFloat(storage.get(STORAGE_PANEL_RATIO_TOP));
     if (Number.isFinite(topRatio) && topRatio > 0.05 && topRatio < 0.95) {
         const c = document.querySelector('.app-shell');
         if (c) c.style.gridTemplateColumns = `minmax(0, ${topRatio}fr) minmax(0, ${1 - topRatio}fr)`;
     }
     if (isPremiereDesign()) {
-        const botRatio = parseFloat(localStorage.getItem(STORAGE_PANEL_RATIO_BOTTOM));
+        const botRatio = parseFloat(storage.get(STORAGE_PANEL_RATIO_BOTTOM));
         if (Number.isFinite(botRatio) && botRatio > 0.05 && botRatio < 0.95) {
             const z = document.getElementById('premiereBottomZone');
             if (z) z.style.gridTemplateColumns = `minmax(0, ${botRatio}fr) minmax(0, ${1 - botRatio}fr)`;
         }
-        const vRatio = parseFloat(localStorage.getItem(STORAGE_PANEL_RATIO_VERT));
+        const vRatio = parseFloat(storage.get(STORAGE_PANEL_RATIO_VERT));
         if (Number.isFinite(vRatio) && vRatio > 0.1 && vRatio < 0.9) {
             const top = document.querySelector('.app-shell');
             const bot = document.getElementById('premiereBottomZone');
@@ -4812,7 +4913,7 @@ function addHorizontalResizer({ getContainer, getCols, storageKey, designFilter 
                 const cols = getCols();
                 if (cols && cols[0]) {
                     const ratio = cols[0].getBoundingClientRect().width / c.getBoundingClientRect().width;
-                    localStorage.setItem(storageKey, String(ratio));
+                    storage.set(storageKey, String(ratio));
                 }
             }
         }
@@ -4908,7 +5009,7 @@ function addVerticalResizer({ getContainer, getRows, storageKey, designFilter })
                 const r2 = rows[1].getBoundingClientRect();
                 const total = r2.bottom - r1.top;
                 if (total > 0) {
-                    localStorage.setItem(storageKey, String(r1.height / total));
+                    storage.set(storageKey, String(r1.height / total));
                 }
             }
         }
