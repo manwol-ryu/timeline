@@ -3634,14 +3634,25 @@ function initFullscreen() {
 
 // 픽처인픽처(PiP)
 // - 다른 탭으로 이동(문서 숨김)했고 영상이 재생 중이면 자동으로 작은 창으로 전환.
-// - 수동 버튼으로 언제든 켜고 끌 수 있음(사용자 제스처 컨텍스트라 iPad Safari
-//   포함 지원 브라우저에서 확실히 동작).
+// - 수동 버튼으로 언제든 켜고 끌 수 있음(사용자 제스처 컨텍스트라 지원
+//   브라우저에서 확실히 동작).
 // - 표준 Picture-in-Picture API를 우선 사용하고, iOS/iPadOS Safari는
 //   webkitSetPresentationMode 폴백으로 지원한다. 파이어폭스처럼 JS API가
 //   없는 브라우저에서는 버튼과 설정 항목을 숨긴다.
+// - iOS/iPadOS "홈 화면에 추가"로 설치한 standalone 웹앱은 WebKit이
+//   프로그램적 PiP를 막는다(호출은 성공을 보고해도 창이 뜨지 않고, 백그라운드
+//   자동 PiP도 동작하지 않음). 이 경우 조용히 실패하는 대신 Safari에서 열어야
+//   한다고 안내한다. 데스크톱 설치형 PWA(Chrome/Edge)는 표준 API로 정상 동작.
 function initPictureInPicture() {
     const pipButton = document.getElementById('pipButton');
     const settingRow = document.getElementById('autoPipSettingRow');
+
+    // iOS 홈 화면 앱: PiP가 제한됨. iPad 계열만 대상으로 삼는다(iPhone Safari는
+    // 탭에서도 PiP 미지원이라 버튼을 강제로 보여줄 이유가 없다).
+    const iphone = /iPhone|iPod/.test(navigator.userAgent || '');
+    const iosStandalone = isIOS() && isInStandalone();
+    const iosStandaloneIpad = iosStandalone && !iphone;
+    let iosNoticeShown = false;
 
     function standardSupported() {
         return document.pictureInPictureEnabled === true &&
@@ -3653,16 +3664,24 @@ function initPictureInPicture() {
             video.webkitSupportsPresentationMode('picture-in-picture') &&
             typeof video.webkitSetPresentationMode === 'function';
     }
-    function supported() {
+    // JS로 PiP를 실제 제어할 수 있는가.
+    function canControlPip() {
         return standardSupported() || webkitSupported();
     }
 
-    if (!supported()) {
-        // JS로 PiP를 제어할 수 없는 브라우저 — 관련 UI를 감춰 혼란을 막는다.
-        if (pipButton) pipButton.hidden = true;
-        if (settingRow) settingRow.hidden = true;
-        return;
+    // 버튼/설정의 노출 여부를 갱신한다. iOS에서는 미디어를 로드하기 전에
+    // 지원 여부가 false로 나올 수 있어, 영상 로드 후 다시 평가한다.
+    function refreshAvailability() {
+        // iPad standalone 앱은 PiP가 막혀 있을 수 있어도 버튼은 노출해
+        // (탭했을 때) 이유를 안내할 수 있게 한다.
+        const showButton = canControlPip() || iosStandaloneIpad;
+        if (pipButton) pipButton.hidden = !showButton;
+        // 자동 전환은 데스크톱/사파리 탭에서만 신뢰할 수 있다.
+        const showAutoToggle = canControlPip() && !iosStandalone;
+        if (settingRow) settingRow.hidden = !showAutoToggle;
     }
+    refreshAvailability();
+    video.addEventListener('loadedmetadata', refreshAvailability);
 
     // 자동 전환으로 우리가 켠 PiP인지 추적 → 탭 복귀 시에만 자동으로 닫는다.
     let autoEntered = false;
@@ -3677,7 +3696,9 @@ function initPictureInPicture() {
         if (standardSupported()) {
             return video.requestPictureInPicture().catch(() => {});
         }
-        try { video.webkitSetPresentationMode('picture-in-picture'); } catch (_) {}
+        if (webkitSupported()) {
+            try { video.webkitSetPresentationMode('picture-in-picture'); } catch (_) {}
+        }
         return Promise.resolve();
     }
 
@@ -3701,19 +3722,30 @@ function initPictureInPicture() {
     // 수동 토글 — 사용자 제스처라 지원 브라우저에서 항상 동작.
     if (pipButton) {
         pipButton.addEventListener('click', () => {
-            if (!video.src) return;
+            if (!video.src) {
+                showMarkToast('영상이 로드되지 않았습니다', 'error');
+                return;
+            }
             if (isInPip()) {
                 exitPip();
-            } else {
-                autoEntered = false;
-                enterPip();
+                return;
+            }
+            autoEntered = false;
+            enterPip();
+            // 홈 화면 앱은 iOS 제한으로 PiP 창이 안 뜰 수 있어, 처음 한 번
+            // 원인과 대안(Safari에서 열기)을 알려 준다.
+            if (iosStandalone && !iosNoticeShown) {
+                iosNoticeShown = true;
+                showMarkToast('홈 화면 앱은 iOS 제한으로 PiP가 안 열릴 수 있어요. 그럴 땐 Safari에서 열어 사용하세요.', 'info');
             }
         });
     }
 
     // 핵심: 다른 탭으로 이동해 문서가 숨겨졌고 영상이 재생 중이면 자동 PiP.
+    // iOS 홈 화면 앱에서는 백그라운드 자동 PiP가 막혀 있어 시도하지 않는다.
     document.addEventListener('visibilitychange', () => {
         if (!getAutoPip() || !video.src) return;
+        if (iosStandalone || !canControlPip()) return;
 
         if (document.hidden) {
             const playing = !video.paused && !video.ended && video.readyState >= 2;
