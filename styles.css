@@ -577,19 +577,6 @@ body {
     pointer-events: none;
 }
 
-/* 픽처인픽처(PiP) 버튼 — 전체화면 FAB 왼쪽에 나란히 배치.
-   ID 선택자로 오프셋을 지정해 디자인·반응형 규칙보다 항상 우선하게 한다. */
-#pipButton { right: 58px; }
-#pipButton[hidden] { display: none; }
-#pipButton.is-active {
-    background: var(--accent, #3b82f6);
-    border-color: transparent;
-}
-#pipButton.is-active:hover {
-    background: var(--accent, #3b82f6);
-    filter: brightness(1.08);
-}
-
 .video-frame.is-expanded {
     position: fixed;
     top: 0;
@@ -1929,8 +1916,6 @@ button.segment-time:focus-visible {
         top: 12px;
         right: 12px;
     }
-
-    #pipButton { right: 64px; }
 
     .settings-content {
         padding: 24px;
@@ -3660,8 +3645,6 @@ body.is-resizing .panel-resizer {
     top: 12px;
     right: 12px;
 }
-
-[data-design="pencil"] #pipButton { right: 72px; }
 
 [data-design="pencil"] .player-fab svg {
     width: 28px;

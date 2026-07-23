@@ -135,7 +135,6 @@ const ENV_DESKTOP = 'desktop';
 const ENV_TOUCH = 'touch';
 const ENV_MODES = ['auto', ENV_DESKTOP, ENV_TOUCH];
 const STORAGE_FASTSTART_AUTO = 'timeline_faststart_auto';
-const STORAGE_AUTO_PIP = 'timeline_auto_pip';
 const DEFAULT_TIMECODE_FPS = 30;
 const INVALID_TIMECODE = '--:--:--:--';
 const MAX_RULER_TICKS = 600;
@@ -2380,11 +2379,6 @@ function loadDefaultSettings() {
         faststartToggle.checked = getAutoFaststart();
     }
 
-    const autoPipToggle = document.getElementById('autoPipToggle');
-    if (autoPipToggle) {
-        autoPipToggle.checked = getAutoPip();
-    }
-
     syncEnvironmentSettingsUi();
     syncPwaUi();
 }
@@ -2492,16 +2486,6 @@ function getAutoFaststart() {
 
 function setAutoFaststart(enabled) {
     storage.set(STORAGE_FASTSTART_AUTO, enabled ? 'true' : 'false');
-}
-
-// 다른 탭으로 이동 시 PiP 자동 전환 — 기본값 켜짐.
-function getAutoPip() {
-    const v = storage.get(STORAGE_AUTO_PIP);
-    return v === null ? true : v === 'true';
-}
-
-function setAutoPip(enabled) {
-    storage.set(STORAGE_AUTO_PIP, enabled ? 'true' : 'false');
 }
 
 function looksLikeMp4(file) {
@@ -3632,108 +3616,6 @@ function initFullscreen() {
     video.addEventListener('webkitendfullscreen', syncButtonState);
 }
 
-// 픽처인픽처(PiP)
-// - 다른 탭으로 이동(문서 숨김)했고 영상이 재생 중이면 자동으로 작은 창으로 전환.
-// - 수동 버튼으로 언제든 켜고 끌 수 있음(사용자 제스처 컨텍스트라 iPad Safari
-//   포함 지원 브라우저에서 확실히 동작).
-// - 표준 Picture-in-Picture API를 우선 사용하고, iOS/iPadOS Safari는
-//   webkitSetPresentationMode 폴백으로 지원한다. 파이어폭스처럼 JS API가
-//   없는 브라우저에서는 버튼과 설정 항목을 숨긴다.
-function initPictureInPicture() {
-    const pipButton = document.getElementById('pipButton');
-    const settingRow = document.getElementById('autoPipSettingRow');
-
-    function standardSupported() {
-        return document.pictureInPictureEnabled === true &&
-            typeof video.requestPictureInPicture === 'function' &&
-            !video.disablePictureInPicture;
-    }
-    function webkitSupported() {
-        return typeof video.webkitSupportsPresentationMode === 'function' &&
-            video.webkitSupportsPresentationMode('picture-in-picture') &&
-            typeof video.webkitSetPresentationMode === 'function';
-    }
-    function supported() {
-        return standardSupported() || webkitSupported();
-    }
-
-    if (!supported()) {
-        // JS로 PiP를 제어할 수 없는 브라우저 — 관련 UI를 감춰 혼란을 막는다.
-        if (pipButton) pipButton.hidden = true;
-        if (settingRow) settingRow.hidden = true;
-        return;
-    }
-
-    // 자동 전환으로 우리가 켠 PiP인지 추적 → 탭 복귀 시에만 자동으로 닫는다.
-    let autoEntered = false;
-
-    function isInPip() {
-        return document.pictureInPictureElement === video ||
-            video.webkitPresentationMode === 'picture-in-picture';
-    }
-
-    function enterPip() {
-        if (isInPip() || !video.src) return Promise.resolve();
-        if (standardSupported()) {
-            return video.requestPictureInPicture().catch(() => {});
-        }
-        try { video.webkitSetPresentationMode('picture-in-picture'); } catch (_) {}
-        return Promise.resolve();
-    }
-
-    function exitPip() {
-        if (!isInPip()) return Promise.resolve();
-        if (document.pictureInPictureElement && typeof document.exitPictureInPicture === 'function') {
-            return document.exitPictureInPicture().catch(() => {});
-        }
-        try { video.webkitSetPresentationMode('inline'); } catch (_) {}
-        return Promise.resolve();
-    }
-
-    function syncButton() {
-        if (!pipButton) return;
-        const active = isInPip();
-        pipButton.classList.toggle('is-active', active);
-        pipButton.setAttribute('aria-label', active ? '픽처인픽처 종료' : '픽처인픽처(PiP)로 보기');
-        if (!active) autoEntered = false;
-    }
-
-    // 수동 토글 — 사용자 제스처라 지원 브라우저에서 항상 동작.
-    if (pipButton) {
-        pipButton.addEventListener('click', () => {
-            if (!video.src) return;
-            if (isInPip()) {
-                exitPip();
-            } else {
-                autoEntered = false;
-                enterPip();
-            }
-        });
-    }
-
-    // 핵심: 다른 탭으로 이동해 문서가 숨겨졌고 영상이 재생 중이면 자동 PiP.
-    document.addEventListener('visibilitychange', () => {
-        if (!getAutoPip() || !video.src) return;
-
-        if (document.hidden) {
-            const playing = !video.paused && !video.ended && video.readyState >= 2;
-            if (playing && !isInPip()) {
-                autoEntered = true;
-                enterPip();
-            }
-        } else if (autoEntered && isInPip()) {
-            // 탭으로 돌아오면 자동으로 켠 PiP만 닫아 인라인 재생으로 복귀.
-            autoEntered = false;
-            exitPip();
-        }
-    });
-
-    video.addEventListener('enterpictureinpicture', syncButton);
-    video.addEventListener('leavepictureinpicture', syncButton);
-    video.addEventListener('webkitpresentationmodechanged', syncButton);
-    syncButton();
-}
-
 function initGestures() {
     const overlay = document.getElementById('gestureOverlay');
     const indicator = document.getElementById('gestureIndicator');
@@ -4756,14 +4638,6 @@ function initSettings() {
         });
     }
 
-    const autoPipToggle = document.getElementById('autoPipToggle');
-    if (autoPipToggle) {
-        autoPipToggle.addEventListener('change', (e) => {
-            setAutoPip(e.target.checked);
-            showFormStatus(e.target.checked ? '탭 전환 시 PiP 자동 전환 켜짐' : '탭 전환 시 PiP 자동 전환 꺼짐');
-        });
-    }
-
     const pwaHintToggle = document.getElementById('pwaHintToggle');
     const showInstallGuideButton = document.getElementById('showInstallGuide');
     const installGuide = document.getElementById('installGuide');
@@ -4844,7 +4718,6 @@ initSettings();
 initGestures();
 initCustomControls();
 initFullscreen();
-initPictureInPicture();
 initPlaybackKeyboardShortcuts();
 initHistoryKeyboardShortcuts();
 initMarkControls();
